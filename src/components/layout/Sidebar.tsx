@@ -15,6 +15,7 @@ import {
   BarChart3,
   Users,
   Settings,
+  Settings2,
   UserCog,
   type LucideIcon,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const iconMap: Record<string, LucideIcon> = {
   BarChart3,
   Users,
   Settings,
+  Settings2,
   UserCog,
 };
 
