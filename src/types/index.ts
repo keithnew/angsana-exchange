@@ -99,11 +99,26 @@ export interface ClientConfig {
   slug: string;
   /** Service tier */
   tier: 'premium' | 'standard' | 'trial';
+  /** Capabilities array — each string unlocks conditional UI and config */
+  capabilities: string[];
   /** Competitors list */
   competitors: string[];
   /** Path to client logo (optional) */
   logoPath: string | null;
+  /** Active therapy areas for this client (when therapyAreas capability enabled) */
+  therapyAreas: string[];
+  /** Conflicted therapy areas (blocked areas, when therapyAreas capability enabled) */
+  conflictedTherapyAreas: string[];
+  /** Last updated timestamp */
+  updatedAt?: string;
+  /** Who last updated */
+  updatedBy?: string;
 }
+
+/**
+ * Known capability strings.
+ */
+export type ClientCapability = 'therapyAreas';
 
 // =============================================================================
 // Status History

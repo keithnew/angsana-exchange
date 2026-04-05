@@ -67,6 +67,12 @@ export const clientNavItems: NavItem[] = [
     module: 'documents',
   },
   {
+    label: 'Settings',
+    route: '/clients/{clientId}/settings',
+    icon: 'Settings2',
+    roles: ['internal-admin', 'internal-user'],
+  },
+  {
     label: 'Approvals',
     route: '/clients/{clientId}/approvals',
     icon: 'ClipboardCheck',
