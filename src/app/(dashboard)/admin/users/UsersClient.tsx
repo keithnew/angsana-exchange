@@ -69,6 +69,7 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  if (!status) return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800">Unknown</span>;
   const label = status === 'invited' ? 'Pending' : status.charAt(0).toUpperCase() + status.slice(1);
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLOURS[status] || 'bg-gray-200 text-gray-800'}`}>
@@ -235,7 +236,7 @@ export default function UsersClient() {
       const res = await authedFetch('/users');
       if (res.ok) {
         const data = await res.json();
-        setUsers((data.documents || []).map((d: { id: string; [key: string]: unknown }) => ({ uid: d.id, ...d })));
+        setUsers((data.documents || []).map((d: { id: string; data?: Record<string, unknown> }) => ({ uid: d.id, ...(d.data || {}) } as UserDoc)));
       }
     } catch (err) {
       console.error('Failed to fetch users:', err);
@@ -249,7 +250,7 @@ export default function UsersClient() {
       const res = await authedFetch('/clients');
       if (res.ok) {
         const data = await res.json();
-        setClients((data.documents || []).map((d: { id: string; name?: string }) => ({ id: d.id, name: (d.name as string) || d.id })));
+        setClients((data.documents || []).map((d: { id: string; data?: Record<string, unknown> }) => ({ id: d.id, name: ((d.data?.name as string) || d.id) })));
       }
     } catch (err) {
       console.error('Failed to fetch clients:', err);
