@@ -5,21 +5,27 @@
 // The generic API at /api/v1/exchange/{env}/api/... requires auth via
 // Authorization: Bearer <token>. This helper gets the current user's
 // Firebase ID token and includes it in the request.
+//
+// NOTE: Firebase Client SDK is loaded lazily (dynamic import) to avoid
+// SSR crashes — getAuth() requires browser APIs (indexedDB/localStorage)
+// that don't exist in Node.js during server-side rendering.
 // =============================================================================
-
-import { auth } from '@/lib/firebase/client';
 
 /** Environment for API calls — always 'prod' for now (single-tenant) */
 const API_ENV = 'prod';
 
 /**
  * Get the current user's Firebase ID token.
- * Returns null if no user is signed in.
+ * Returns null if no user is signed in or if running on the server.
  */
 async function getIdToken(): Promise<string | null> {
-  const user = auth.currentUser;
-  if (!user) return null;
+  // Guard: only run in browser
+  if (typeof window === 'undefined') return null;
+
   try {
+    const { auth } = await import('@/lib/firebase/client');
+    const user = auth.currentUser;
+    if (!user) return null;
     return await user.getIdToken();
   } catch {
     return null;
