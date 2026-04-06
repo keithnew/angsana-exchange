@@ -6,12 +6,36 @@
 // =============================================================================
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { apiFetch } from '@/lib/api/client-fetch';
-// useAuth not needed here — admin page is already gated by layout
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Users, UserPlus, Search, MoreHorizontal, Shield, ShieldCheck, UserCheck, Eye, Mail, Ban, CheckCircle, Trash2 } from 'lucide-react';
+import { UserPlus, Search, MoreHorizontal, Mail, Ban, CheckCircle, Trash2 } from 'lucide-react';
+
+/** Simple fetch helper — gets token from Firebase client SDK lazily */
+async function authedFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  
+  if (typeof window !== 'undefined') {
+    try {
+      const { auth } = await import('@/lib/firebase/client');
+      const user = auth.currentUser;
+      if (user) {
+        const token = await user.getIdToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch (e) {
+      console.warn('Failed to get auth token:', e);
+    }
+  }
+
+  return fetch(`/api/v1/exchange/prod/api${path.startsWith('/') ? path : '/' + path}`, {
+    ...options,
+    headers,
+  });
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -110,7 +134,7 @@ function CreateUserDialog({
       if (isClientRole) body.clientId = clientId;
       if (isInternalUser) body.assignedClients = assignedClients;
 
-      const res = await apiFetch('/users/provision', {
+      const res = await authedFetch('/users/provision', {
         method: 'POST',
         body: JSON.stringify(body),
       });
@@ -222,7 +246,7 @@ export default function UsersClient() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await apiFetch('/users');
+      const res = await authedFetch('/users');
       if (res.ok) {
         const data = await res.json();
         setUsers((data.documents || []).map((d: { id: string; [key: string]: unknown }) => ({ uid: d.id, ...d })));
@@ -236,7 +260,7 @@ export default function UsersClient() {
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await apiFetch('/clients');
+      const res = await authedFetch('/clients');
       if (res.ok) {
         const data = await res.json();
         setClients((data.documents || []).map((d: { id: string; name?: string }) => ({ id: d.id, name: (d.name as string) || d.id })));
@@ -277,7 +301,7 @@ export default function UsersClient() {
     setActionMenuUid(null);
     const endpoint = `/users/${uid}/${action}`;
     try {
-      const res = await apiFetch(endpoint, { method: 'POST' });
+      const res = await authedFetch(endpoint, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json();
         alert(data.error || `Failed to ${action} user`);
@@ -291,9 +315,9 @@ export default function UsersClient() {
     setActionMenuUid(null);
     // Soft delete: disable + mark deleted
     try {
-      await apiFetch(`/users/${uid}/disable`, { method: 'POST' });
+      await authedFetch(`/users/${uid}/disable`, { method: 'POST' });
       // Mark as deleted in Firestore via PATCH
-      await apiFetch(`/users/${uid}`, {
+      await authedFetch(`/users/${uid}`, {
         method: 'PATCH',
         body: JSON.stringify({ deletedAt: new Date().toISOString() }),
       });
