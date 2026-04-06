@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Pencil,
@@ -16,8 +15,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CAMPAIGN_STATUS_CONFIG } from '@/types';
-import type { Campaign, ManagedListItem, StatusHistoryEntry } from '@/types';
+import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG } from '@/types';
+import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus } from '@/types';
 
 // =============================================================================
 // Helpers
@@ -120,7 +119,6 @@ function PlaceholderSection({ title }: { title: string }) {
 
 function StatusActions({
   campaign,
-  clientId,
   onTransition,
 }: {
   campaign: Campaign;
@@ -360,6 +358,8 @@ export function CampaignDetailClient({
   managedLists,
   isInternal,
   userEmail,
+  relatedCheckins = [],
+  relatedActions = [],
 }: {
   campaign: Campaign;
   clientId: string;
@@ -367,8 +367,9 @@ export function CampaignDetailClient({
   managedLists: Record<string, ManagedListItem[]>;
   isInternal: boolean;
   userEmail: string;
+  relatedCheckins?: { id: string; date: string; type: string; keyPoints: string[] }[];
+  relatedActions?: { id: string; title: string; status: string; assignedTo: string; dueDate: string }[];
 }) {
-  const router = useRouter();
   const [campaign, setCampaign] = useState(initialCampaign);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -639,6 +640,99 @@ export function CampaignDetailClient({
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Related Check-ins */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Related Check-ins</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {relatedCheckins.length > 0 ? (
+            <div className="space-y-2">
+              {relatedCheckins.map((ci) => {
+                const typeConfig = CHECKIN_TYPE_CONFIG[ci.type as CheckInType] || CHECKIN_TYPE_CONFIG.regular;
+                return (
+                  <Link
+                    key={ci.id}
+                    href={`/clients/${clientId}/checkins/${ci.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-sm font-medium text-[var(--foreground)] whitespace-nowrap">
+                      {formatDate(ci.date)}
+                    </span>
+                    <span
+                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={{ color: typeConfig.colour, backgroundColor: typeConfig.bgColour }}
+                    >
+                      {typeConfig.label}
+                    </span>
+                    <span className="text-sm text-[var(--muted)] truncate">
+                      {ci.keyPoints[0] || '—'}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm italic text-[var(--muted)]">No check-ins linked to this campaign</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Related Actions */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Related Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {relatedActions.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    <th className="pb-2 pr-3">Title</th>
+                    <th className="pb-2 pr-3">Status</th>
+                    <th className="pb-2 pr-3">Assigned To</th>
+                    <th className="pb-2">Due Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {relatedActions.map((action) => {
+                    const statusConfig = ACTION_STATUS_CONFIG[action.status as ActionStatus] || ACTION_STATUS_CONFIG.open;
+                    const isOverdue = action.status !== 'done' && action.dueDate && new Date(action.dueDate) < new Date();
+                    return (
+                      <tr key={action.id} className="border-b border-gray-100 last:border-0">
+                        <td className="py-2 pr-3">
+                          <Link
+                            href={`/clients/${clientId}/actions`}
+                            className="text-[var(--foreground)] hover:text-[var(--primary)]"
+                          >
+                            {action.title}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                            style={{ color: statusConfig.colour, backgroundColor: statusConfig.bgColour }}
+                          >
+                            {statusConfig.label}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-[var(--muted)]">{action.assignedTo}</td>
+                        <td className={`py-2 ${isOverdue ? 'text-red-600 font-medium' : 'text-[var(--muted)]'}`}>
+                          {formatDate(action.dueDate)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm italic text-[var(--muted)]">No actions linked to this campaign</p>
+          )}
         </CardContent>
       </Card>
 

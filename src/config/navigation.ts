@@ -51,7 +51,6 @@ export const clientNavItems: NavItem[] = [
     route: '/clients/{clientId}/wishlists',
     icon: 'Target',
     module: 'wishlists',
-    roles: ['internal-admin', 'internal-user'],
   },
   {
     label: 'DNC / MSA-PSL',

@@ -107,7 +107,7 @@ const TEST_USERS: TestUser[] = [
       clientId: 'cegid-spain',
       assignedClients: null,
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'documents', 'dashboard', 'approvals',
+        'campaigns', 'checkins', 'actions', 'wishlists', 'documents', 'dashboard', 'approvals',
       ],
     },
   },
@@ -121,7 +121,7 @@ const TEST_USERS: TestUser[] = [
       clientId: 'cegid-spain',
       assignedClients: null,
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'documents', 'dashboard',
+        'campaigns', 'checkins', 'actions', 'wishlists', 'documents', 'dashboard',
       ],
     },
   },
@@ -429,6 +429,244 @@ async function seedFirestore() {
   for (const campaign of campaigns) {
     await campaignsRef.doc(campaign.id).set(campaign.data);
     console.log(`    ✓ Campaign: ${campaign.data.campaignName}`);
+  }
+
+  // --- Check-ins for Cegid Spain ---
+  console.log('  Seeding check-ins for cegid-spain...');
+  const checkInsRef = cegidRef.collection('checkIns');
+
+  const checkin1Ref = checkInsRef.doc('checkin-kickoff');
+  const checkin2Ref = checkInsRef.doc('checkin-regular-jan');
+
+  await checkin1Ref.set({
+    date: Timestamp.fromDate(new Date('2025-12-18')),
+    type: 'kick-off',
+    attendees: ['Keith New', 'Mike Cole', 'Alessandro Originale'],
+    duration: 60,
+    relatedCampaigns: ['iberia-retail-pos-fashion', 'iberia-retail-pos-outdoor'],
+    keyPoints: [
+      'Agreed ICP: CTO/CIO at mid-market retailers in Iberia',
+      'Two campaigns: Fashion & Luxury (premium segment) and Outdoor & Sportswear',
+      'Cegid to provide updated competitor list by end of week',
+      'Target list sourcing to begin Jan, first calls Feb',
+    ],
+    decisions: [
+      { text: 'Split Iberia POS into two campaigns by vertical', assignee: 'Mike Cole', dueDate: '2025-12-20', createAction: true },
+    ],
+    nextSteps: [
+      { text: 'Source initial target list for Fashion & Luxury vertical', owner: 'Research Team', targetDate: '2026-01-15', createAction: true },
+    ],
+    nextCheckInDate: Timestamp.fromDate(new Date('2026-01-15')),
+    generatedActionIds: ['action-1', 'action-2'],
+    createdBy: 'keith@angsana.com',
+    createdAt: Timestamp.fromDate(new Date('2025-12-18')),
+    updatedAt: Timestamp.fromDate(new Date('2025-12-18')),
+  });
+  console.log('    ✓ Check-in: Kick-off (18 Dec 2025)');
+
+  await checkin2Ref.set({
+    date: Timestamp.fromDate(new Date('2026-01-15')),
+    type: 'regular',
+    attendees: ['Mike Cole', 'Alessandro Originale', 'Monica Satizabal'],
+    duration: 30,
+    relatedCampaigns: ['iberia-retail-pos-fashion', 'iberia-retail-pos-outdoor'],
+    keyPoints: [
+      'Target list for Fashion & Luxury approved — 312 TLMs',
+      'Outdoor & Sportswear list still in sourcing — research team needs SIC codes clarified',
+      'Client wants to add Retail Forum Event Follow-Up as third campaign',
+    ],
+    decisions: [
+      { text: 'Create Retail Forum Event Follow-Up campaign', assignee: 'Mike Cole', dueDate: '2026-01-20', createAction: true },
+      { text: 'Provide SIC code clarification for outdoor retail vertical', assignee: 'Alessandro Originale', dueDate: '2026-01-22', createAction: true },
+    ],
+    nextSteps: [
+      { text: 'Begin calling on Fashion & Luxury list', owner: 'Deborah Rey', targetDate: '2026-02-01', createAction: true },
+    ],
+    nextCheckInDate: Timestamp.fromDate(new Date('2026-02-15')),
+    generatedActionIds: ['action-3', 'action-4'],
+    createdBy: 'mike@angsana.com',
+    createdAt: Timestamp.fromDate(new Date('2026-01-15')),
+    updatedAt: Timestamp.fromDate(new Date('2026-01-15')),
+  });
+  console.log('    ✓ Check-in: Regular (15 Jan 2026)');
+
+  // --- Actions for Cegid Spain ---
+  console.log('  Seeding actions for cegid-spain...');
+  const actionsRef = cegidRef.collection('actions');
+
+  const actions = [
+    {
+      id: 'action-1',
+      data: {
+        title: 'Split Iberia POS into two campaigns',
+        description: '',
+        assignedTo: 'Mike Cole',
+        dueDate: Timestamp.fromDate(new Date('2025-12-20')),
+        status: 'done',
+        priority: 'medium',
+        source: { type: 'checkin', ref: 'checkin-kickoff' },
+        relatedCampaign: '',
+        createdBy: 'keith@angsana.com',
+        createdAt: Timestamp.fromDate(new Date('2025-12-18')),
+        updatedAt: Timestamp.fromDate(new Date('2025-12-20')),
+      },
+    },
+    {
+      id: 'action-2',
+      data: {
+        title: 'Source target list for Fashion & Luxury',
+        description: '',
+        assignedTo: 'Research Team',
+        dueDate: Timestamp.fromDate(new Date('2026-01-15')),
+        status: 'done',
+        priority: 'medium',
+        source: { type: 'checkin', ref: 'checkin-kickoff' },
+        relatedCampaign: 'iberia-retail-pos-fashion',
+        createdBy: 'keith@angsana.com',
+        createdAt: Timestamp.fromDate(new Date('2025-12-18')),
+        updatedAt: Timestamp.fromDate(new Date('2026-01-14')),
+      },
+    },
+    {
+      id: 'action-3',
+      data: {
+        title: 'Create Retail Forum Event Follow-Up campaign',
+        description: '',
+        assignedTo: 'Mike Cole',
+        dueDate: Timestamp.fromDate(new Date('2026-01-20')),
+        status: 'done',
+        priority: 'medium',
+        source: { type: 'checkin', ref: 'checkin-regular-jan' },
+        relatedCampaign: '',
+        createdBy: 'mike@angsana.com',
+        createdAt: Timestamp.fromDate(new Date('2026-01-15')),
+        updatedAt: Timestamp.fromDate(new Date('2026-01-20')),
+      },
+    },
+    {
+      id: 'action-4',
+      data: {
+        title: 'Provide SIC code clarification for outdoor retail',
+        description: '',
+        assignedTo: 'Alessandro Originale',
+        dueDate: Timestamp.fromDate(new Date('2026-01-22')),
+        status: 'open',
+        priority: 'high',
+        source: { type: 'checkin', ref: 'checkin-regular-jan' },
+        relatedCampaign: 'iberia-retail-pos-outdoor',
+        createdBy: 'mike@angsana.com',
+        createdAt: Timestamp.fromDate(new Date('2026-01-15')),
+        updatedAt: Timestamp.fromDate(new Date('2026-01-15')),
+      },
+    },
+    {
+      id: 'action-5',
+      data: {
+        title: 'Review Cegid competitor positioning vs Oracle Retail',
+        description: 'Compare Cegid unified commerce features against Oracle Retail Cloud for Iberia market positioning.',
+        assignedTo: 'Keith New',
+        dueDate: Timestamp.fromDate(new Date('2026-04-01')),
+        status: 'in-progress',
+        priority: 'medium',
+        source: { type: 'manual' },
+        relatedCampaign: '',
+        createdBy: 'keith@angsana.com',
+        createdAt: Timestamp.fromDate(new Date('2026-02-10')),
+        updatedAt: Timestamp.fromDate(new Date('2026-03-15')),
+      },
+    },
+  ];
+
+  for (const action of actions) {
+    await actionsRef.doc(action.id).set(action.data);
+    console.log(`    ✓ Action: ${action.data.title} (${action.data.status})`);
+  }
+
+  // --- Wishlists for Cegid Spain ---
+  console.log('  Seeding wishlists for cegid-spain...');
+  const wishlistsRef = cegidRef.collection('wishlists');
+
+  const wishlists = [
+    {
+      id: 'wishlist-1',
+      data: {
+        companyName: 'El Corte Inglés',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'high',
+        notes: 'Largest department store chain in Spain. Key target.',
+        status: 'added-to-target-list',
+        campaignRef: 'iberia-retail-pos-fashion',
+        addedBy: 'alessandro@cegid.com',
+        addedDate: Timestamp.fromDate(new Date('2026-01-10')),
+        updatedAt: Timestamp.fromDate(new Date('2026-01-20')),
+      },
+    },
+    {
+      id: 'wishlist-2',
+      data: {
+        companyName: 'Mango',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'high',
+        notes: 'Barcelona HQ. Fast fashion, considering POS upgrade.',
+        status: 'under-review',
+        campaignRef: '',
+        addedBy: 'alessandro@cegid.com',
+        addedDate: Timestamp.fromDate(new Date('2026-02-20')),
+        updatedAt: Timestamp.fromDate(new Date('2026-03-01')),
+      },
+    },
+    {
+      id: 'wishlist-3',
+      data: {
+        companyName: 'Decathlon Spain',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'medium',
+        notes: 'Outdoor & sports retail. Good fit for sportswear campaign.',
+        status: 'new',
+        campaignRef: '',
+        addedBy: 'mike@angsana.com',
+        addedDate: Timestamp.fromDate(new Date('2026-04-01')),
+        updatedAt: Timestamp.fromDate(new Date('2026-04-01')),
+      },
+    },
+    {
+      id: 'wishlist-4',
+      data: {
+        companyName: 'Tendam',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'medium',
+        notes: 'Cortefiel, Springfield, Women\'secret brands.',
+        status: 'new',
+        campaignRef: '',
+        addedBy: 'alessandro@cegid.com',
+        addedDate: Timestamp.fromDate(new Date('2026-04-03')),
+        updatedAt: Timestamp.fromDate(new Date('2026-04-03')),
+      },
+    },
+    {
+      id: 'wishlist-5',
+      data: {
+        companyName: 'Desigual',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'low',
+        notes: 'Too small for current campaign scope.',
+        status: 'rejected',
+        campaignRef: '',
+        addedBy: 'mike@angsana.com',
+        addedDate: Timestamp.fromDate(new Date('2026-03-15')),
+        updatedAt: Timestamp.fromDate(new Date('2026-03-20')),
+      },
+    },
+  ];
+
+  for (const wishlist of wishlists) {
+    await wishlistsRef.doc(wishlist.id).set(wishlist.data);
+    console.log(`    ✓ Wishlist: ${wishlist.data.companyName} (${wishlist.data.status})`);
   }
 
   // --- Client: Wavix (stub — no campaigns) ---

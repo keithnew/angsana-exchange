@@ -254,6 +254,255 @@ export interface ManagedListDoc {
   updatedBy?: string;
 }
 
+// =============================================================================
+// Check-in
+// =============================================================================
+
+/**
+ * Check-in type — constrains how a meeting is categorised.
+ */
+export type CheckInType = 'kick-off' | 'regular' | 'ad-hoc';
+
+/**
+ * Duration options for check-ins (in minutes).
+ */
+export type CheckInDuration = 15 | 30 | 60 | 90;
+
+/**
+ * A structured decision recorded during a check-in.
+ */
+export interface CheckInDecision {
+  /** Decision text (max 200 chars) */
+  text: string;
+  /** Person responsible (free text for Slice 3) */
+  assignee?: string;
+  /** When this needs to be done */
+  dueDate?: string;
+  /** Whether an action was created from this decision */
+  createAction: boolean;
+}
+
+/**
+ * A next step recorded during a check-in.
+ */
+export interface CheckInNextStep {
+  /** Next step text (max 200 chars) */
+  text: string;
+  /** Person responsible (free text for Slice 3) */
+  owner?: string;
+  /** Target completion date */
+  targetDate?: string;
+  /** Whether an action was created from this next step */
+  createAction: boolean;
+}
+
+/**
+ * Check-in document from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/checkIns/{checkInId}
+ */
+export interface CheckIn {
+  /** Document ID */
+  id: string;
+  /** Meeting date (ISO string) */
+  date: string;
+  /** Type of meeting */
+  type: CheckInType;
+  /** Names of attendees */
+  attendees: string[];
+  /** Duration in minutes */
+  duration: CheckInDuration;
+  /** Related campaign IDs */
+  relatedCampaigns: string[];
+  /** Key points — 1-5 items, each max 150 chars */
+  keyPoints: string[];
+  /** Structured decisions from the meeting */
+  decisions: CheckInDecision[];
+  /** Follow-up next steps */
+  nextSteps: CheckInNextStep[];
+  /** Optional next check-in date (ISO string) */
+  nextCheckInDate?: string;
+  /** IDs of actions generated from this check-in */
+  generatedActionIds: string[];
+  /** Who recorded the check-in */
+  createdBy: string;
+  /** When it was recorded (ISO string) */
+  createdAt: string;
+  /** Last updated (ISO string) */
+  updatedAt: string;
+}
+
+/**
+ * Check-in type display configuration.
+ */
+export const CHECKIN_TYPE_CONFIG: Record<
+  CheckInType,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'kick-off': { label: 'Kick-off', colour: '#0D9488', bgColour: '#CCFBF1' },
+  regular: { label: 'Regular', colour: '#6B7280', bgColour: '#F3F4F6' },
+  'ad-hoc': { label: 'Ad-hoc', colour: '#7C3AED', bgColour: '#EDE9FE' },
+};
+
+/**
+ * Check-in duration display labels.
+ */
+export const CHECKIN_DURATION_OPTIONS: { value: CheckInDuration; label: string }[] = [
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '60 min' },
+  { value: 90, label: '90 min' },
+];
+
+// =============================================================================
+// Action
+// =============================================================================
+
+/**
+ * Action status values.
+ */
+export type ActionStatus = 'open' | 'in-progress' | 'done' | 'blocked';
+
+/**
+ * Action priority values.
+ */
+export type ActionPriority = 'high' | 'medium' | 'low';
+
+/**
+ * Source of an action — either from a check-in or manually created.
+ */
+export interface ActionSource {
+  type: 'checkin' | 'manual';
+  ref?: string; // checkInId when type is 'checkin'
+}
+
+/**
+ * Action document from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/actions/{actionId}
+ */
+export interface Action {
+  /** Document ID */
+  id: string;
+  /** Task title (max 150 chars) */
+  title: string;
+  /** Additional context (max 280 chars) */
+  description: string;
+  /** Person responsible */
+  assignedTo: string;
+  /** Due date (ISO string) */
+  dueDate: string;
+  /** Current status */
+  status: ActionStatus;
+  /** Priority level */
+  priority: ActionPriority;
+  /** Where this action came from */
+  source: ActionSource;
+  /** Optional related campaign ID */
+  relatedCampaign: string;
+  /** Who created the action */
+  createdBy: string;
+  /** When it was created (ISO string) */
+  createdAt: string;
+  /** Last updated (ISO string) */
+  updatedAt: string;
+}
+
+/**
+ * Action status display configuration.
+ */
+export const ACTION_STATUS_CONFIG: Record<
+  ActionStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  open: { label: 'Open', colour: '#2563EB', bgColour: '#EFF6FF' },
+  'in-progress': { label: 'In Progress', colour: '#D97706', bgColour: '#FFFBEB' },
+  done: { label: 'Done', colour: '#059669', bgColour: '#ECFDF5' },
+  blocked: { label: 'Blocked', colour: '#DC2626', bgColour: '#FEF2F2' },
+};
+
+/**
+ * Action priority display configuration.
+ */
+export const ACTION_PRIORITY_CONFIG: Record<
+  ActionPriority,
+  { label: string; colour: string; bgColour: string }
+> = {
+  high: { label: 'High', colour: '#DC2626', bgColour: '#FEF2F2' },
+  medium: { label: 'Medium', colour: '#D97706', bgColour: '#FFFBEB' },
+  low: { label: 'Low', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+// =============================================================================
+// Wishlist
+// =============================================================================
+
+/**
+ * Wishlist item status values.
+ */
+export type WishlistStatus = 'new' | 'under-review' | 'added-to-target-list' | 'rejected';
+
+/**
+ * Wishlist item priority values.
+ */
+export type WishlistPriority = 'high' | 'medium' | 'low';
+
+/**
+ * Wishlist item document from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/wishlists/{wishlistId}
+ */
+export interface WishlistItem {
+  /** Document ID */
+  id: string;
+  /** Target company name */
+  companyName: string;
+  /** Sector reference (from managedLists/sectors) */
+  sector: string;
+  /** Geography reference (from managedLists/geographies) */
+  geography: string;
+  /** Priority level */
+  priority: WishlistPriority;
+  /** Notes — why this company, specific contacts, context (max 280 chars) */
+  notes: string;
+  /** Current status */
+  status: WishlistStatus;
+  /** Campaign reference — which campaign this company is allocated to */
+  campaignRef: string;
+  /** Email of user who added the entry */
+  addedBy: string;
+  /** When the entry was created (ISO string) */
+  addedDate: string;
+  /** Last updated (ISO string) */
+  updatedAt: string;
+}
+
+/**
+ * Wishlist status display configuration.
+ */
+export const WISHLIST_STATUS_CONFIG: Record<
+  WishlistStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  new: { label: 'New', colour: '#2563EB', bgColour: '#EFF6FF' },
+  'under-review': { label: 'Under Review', colour: '#D97706', bgColour: '#FFFBEB' },
+  'added-to-target-list': { label: 'Added to Target List', colour: '#059669', bgColour: '#ECFDF5' },
+  rejected: { label: 'Rejected', colour: '#DC2626', bgColour: '#FEF2F2' },
+};
+
+/**
+ * Wishlist priority display configuration (reuses action priority colours).
+ */
+export const WISHLIST_PRIORITY_CONFIG: Record<
+  WishlistPriority,
+  { label: string; colour: string; bgColour: string }
+> = {
+  high: { label: 'High', colour: '#DC2626', bgColour: '#FEF2F2' },
+  medium: { label: 'Medium', colour: '#D97706', bgColour: '#FFFBEB' },
+  low: { label: 'Low', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+// =============================================================================
+// Managed Lists
+// =============================================================================
+
 /**
  * Display configuration for managed list types in the admin UI.
  */

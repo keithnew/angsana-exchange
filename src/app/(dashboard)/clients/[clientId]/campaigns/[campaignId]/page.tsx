@@ -106,6 +106,74 @@ export default async function CampaignDetailPage({
   const isInternal =
     user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
 
+  // Fetch related check-ins (where this campaign is in relatedCampaigns)
+  const clientRef = adminDb
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('clients')
+    .doc(clientId);
+
+  // Fetch related check-ins — gracefully handle missing composite index
+  let relatedCheckins: { id: string; date: string; type: string; keyPoints: string[] }[] = [];
+  try {
+    const checkinsSnapshot = await clientRef
+      .collection('checkIns')
+      .where('relatedCampaigns', 'array-contains', campaignId)
+      .orderBy('date', 'desc')
+      .get();
+
+    relatedCheckins = checkinsSnapshot.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        date: d.date?.toDate?.()?.toISOString() || '',
+        type: d.type || 'regular',
+        keyPoints: d.keyPoints || [],
+      };
+    });
+  } catch (err) {
+    // Composite index may not exist yet — fall back to unordered query
+    console.warn('Check-ins composite index not ready, falling back:', err);
+    try {
+      const checkinsSnapshot = await clientRef
+        .collection('checkIns')
+        .where('relatedCampaigns', 'array-contains', campaignId)
+        .get();
+
+      relatedCheckins = checkinsSnapshot.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          date: d.date?.toDate?.()?.toISOString() || '',
+          type: d.type || 'regular',
+          keyPoints: d.keyPoints || [],
+        };
+      });
+      // Sort client-side
+      relatedCheckins.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    } catch {
+      // If even the simple query fails, return empty
+      relatedCheckins = [];
+    }
+  }
+
+  // Fetch related actions (where relatedCampaign matches)
+  const actionsSnapshot = await clientRef
+    .collection('actions')
+    .where('relatedCampaign', '==', campaignId)
+    .get();
+
+  const relatedActions = actionsSnapshot.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      title: d.title || '',
+      status: d.status || 'open',
+      assignedTo: d.assignedTo || '',
+      dueDate: d.dueDate?.toDate?.()?.toISOString() || '',
+    };
+  });
+
   return (
     <CampaignDetailClient
       campaign={campaign}
@@ -114,6 +182,8 @@ export default async function CampaignDetailPage({
       managedLists={managedLists}
       isInternal={isInternal}
       userEmail={user.email}
+      relatedCheckins={relatedCheckins}
+      relatedActions={relatedActions}
     />
   );
 }
