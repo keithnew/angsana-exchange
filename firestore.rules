@@ -58,6 +58,20 @@ service cloud.firestore {
         allow write: if false; // Admin SDK only (admin UI in later slice)
       }
 
+      // ─── Users ─────────────────────────────────────────────────
+      // Slice 6B: Users can read their own doc (for login tracking).
+      // Users can update only lastLoginAt and status on their own doc.
+      // All other writes go through API routes using Admin SDK.
+      match /users/{userId} {
+        allow read: if isTenantMember(tenantId)
+                    && (isInternal() || request.auth.uid == userId);
+        allow update: if isTenantMember(tenantId)
+                      && request.auth.uid == userId
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['lastLoginAt', 'status']);
+        allow create, delete: if false; // Admin SDK only
+      }
+
       // ─── Clients ────────────────────────────────────────────────
       match /clients/{clientId} {
         allow read: if isTenantMember(tenantId)

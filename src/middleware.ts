@@ -21,7 +21,10 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes — no auth required
-  const publicRoutes = ['/login', '/api/auth/session', '/api/health'];
+  // /api/v1/* is excluded because the Exchange programmatic API handles its own
+  // multi-method auth (Firebase tokens, API keys, future client JWTs).
+  // Without this exclusion, API key callers would receive a 302 redirect to /login.
+  const publicRoutes = ['/login', '/api/auth/session', '/api/health', '/api/v1/'];
   if (publicRoutes.some((route) => pathname.startsWith(route))) {
     return NextResponse.next();
   }

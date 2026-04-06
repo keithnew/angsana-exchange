@@ -121,6 +121,45 @@ export interface ClientConfig {
 export type ClientCapability = 'therapyAreas';
 
 // =============================================================================
+// User Status (Slice 6B)
+// =============================================================================
+
+/**
+ * User lifecycle status values.
+ */
+export type UserStatus = 'invited' | 'active' | 'disabled';
+
+/**
+ * User status display configuration — follows portfolio dashboard pattern.
+ */
+export const USER_STATUS_CONFIG: Record<
+  UserStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  active: { label: 'Active', colour: '#059669', bgColour: '#ECFDF5' },
+  invited: { label: 'Pending', colour: '#D97706', bgColour: '#FFFBEB' },
+  disabled: { label: 'Disabled', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+/**
+ * Role display configuration — colour-coded badges per spec.
+ */
+export const USER_ROLE_CONFIG: Record<
+  UserRole,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'internal-admin': { label: 'Internal Admin', colour: '#004156', bgColour: '#E0F2F7' },
+  'internal-user': { label: 'Internal User', colour: '#3B7584', bgColour: '#E8F4F8' },
+  'client-approver': { label: 'Client Approver', colour: '#92400E', bgColour: '#FEF3C7' },
+  'client-viewer': { label: 'Client Viewer', colour: '#6B21A8', bgColour: '#F3E8FF' },
+};
+
+/**
+ * Client status values (Slice 6B).
+ */
+export type ClientStatus = 'active' | 'lapsed';
+
+// =============================================================================
 // Status History
 // =============================================================================
 

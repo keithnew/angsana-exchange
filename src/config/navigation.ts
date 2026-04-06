@@ -52,6 +52,12 @@ export const clientNavItems: NavItem[] = [
     module: 'wishlists',
   },
   {
+    label: 'Team',
+    route: '/clients/{clientId}/team',
+    icon: 'Users',
+    roles: ['client-approver', 'client-viewer'],
+  },
+  {
     label: 'DNC / MSA-PSL',
     route: '/clients/{clientId}/dnc',
     icon: 'ShieldBan',

@@ -309,6 +309,8 @@ async function seedFirestore() {
 
   await cegidRef.set({
     name: 'Cegid Group Spain',
+    status: 'active',
+    sfAccountId: null,
     slug: 'cegid-spain',
     tier: 'premium',
     capabilities: [],
@@ -774,6 +776,8 @@ async function seedFirestore() {
 
   await wavixRef.set({
     name: 'Wavix Technologies',
+    status: 'active',
+    sfAccountId: null,
     slug: 'wavix',
     tier: 'standard',
     capabilities: ['therapyAreas'],
@@ -784,6 +788,49 @@ async function seedFirestore() {
     createdAt: now,
     updatedAt: now,
   });
+}
+
+// =============================================================================
+// Seed Users Collection (Slice 6A)
+// Creates queryable Firestore user documents mirroring Firebase Auth users.
+// Firebase Auth remains the source of truth for authentication; this collection
+// provides list/filter/search capabilities for the API and UI layers.
+// =============================================================================
+
+async function seedUsersCollection() {
+  const db = getFirestore();
+  const auth = getAuth();
+  const now = Timestamp.now();
+  const usersRef = db.collection('tenants').doc(TENANT_ID).collection('users');
+
+  for (const user of TEST_USERS) {
+    try {
+      // Look up the Firebase Auth UID
+      const authUser = await auth.getUserByEmail(user.email);
+      const uid = authUser.uid;
+
+      await usersRef.doc(uid).set({
+        uid,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.claims.role,
+        tenantId: TENANT_ID,
+        clientId: user.claims.clientId,
+        assignedClients: user.claims.assignedClients,
+        status: 'active',
+        createdAt: now,
+        createdBy: null, // seed data
+        lastLoginAt: null,
+        disabledAt: null,
+        disabledBy: null,
+      }, { merge: true });
+
+      console.log(`  ✓ User doc: ${user.email} (${uid}) → role=${user.claims.role}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`  ✗ Failed to seed user doc for ${user.email}: ${message}`);
+    }
+  }
 }
 
 // =============================================================================
@@ -807,6 +854,10 @@ async function main() {
 
   console.log('→ Seeding Firestore data...');
   await seedFirestore();
+  console.log('');
+
+  console.log('→ Seeding Users collection (Slice 6A)...');
+  await seedUsersCollection();
   console.log('');
 
   console.log('✅ Seed complete!');

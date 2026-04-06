@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase/admin';
+import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * POST /api/auth/session
@@ -22,6 +23,31 @@ export async function POST(request: NextRequest) {
 
     // Verify the token is valid and not expired
     const decodedToken = await adminAuth.verifyIdToken(idToken);
+
+    // ── Login tracking (fire-and-forget) ──────────────────────────────
+    // Update lastLoginAt on every login. Flip 'invited' → 'active' on first login.
+    const tenantId = decodedToken.tenantId || 'angsana';
+    const uid = decodedToken.uid;
+    try {
+      const userRef = adminDb.collection('tenants').doc(tenantId).collection('users').doc(uid);
+      const userDoc = await userRef.get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        const updates: Record<string, unknown> = {
+          lastLoginAt: FieldValue.serverTimestamp(),
+        };
+        // First login: flip invited → active
+        if (userData?.status === 'invited') {
+          updates.status = 'active';
+        }
+        userRef.update(updates).catch((err: unknown) => {
+          console.error('Login tracking write failed:', err);
+        });
+      }
+    } catch (err) {
+      // Non-blocking — don't fail the login flow
+      console.error('Login tracking error:', err);
+    }
 
     // Set the token as a cookie. The cookie expires when the token expires
     // (Firebase ID tokens are valid for 1 hour). The client refreshes the

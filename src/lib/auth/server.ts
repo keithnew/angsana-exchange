@@ -67,7 +67,12 @@ export function hasClientAccess(
     return claims.clientId === clientId;
   }
 
-  // Internal admin with wildcard access
+  // Internal admin has unrestricted access (by role, not just assignedClients)
+  if (claims.role === 'internal-admin') {
+    return true;
+  }
+
+  // Internal admin with wildcard access (legacy check)
   if (claims.assignedClients?.includes('*')) {
     return true;
   }
