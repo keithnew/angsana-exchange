@@ -98,6 +98,39 @@ export async function authenticateRequest(
     return authenticateApiKey(apiKeyHeader);
   }
 
+  // ─── Method 3: Session Cookie ──────────────────────────────────────────
+  // UI components call Exchange API routes from the browser. The browser
+  // sends the __session cookie (httpOnly) which contains the raw Firebase
+  // ID token. This is the same token the middleware verifies for page
+  // navigation — here we verify it for API calls from the UI.
+  const cookieHeader = request.headers.get('cookie') || '';
+  const sessionMatch = cookieHeader.match(/(?:^|;\s*)__session=([^;]+)/);
+  if (sessionMatch) {
+    const sessionToken = sessionMatch[1];
+    try {
+      const decodedToken = await adminAuth.verifyIdToken(sessionToken);
+
+      const role = (decodedToken.role as UserRole) || 'client-viewer';
+      const tenantId = (decodedToken.tenantId as string) || DEFAULT_TENANT_ID;
+      const clientId = (decodedToken.clientId as string) || undefined;
+      const assignedClients = (decodedToken.assignedClients as string[]) || undefined;
+      const permittedModules = (decodedToken.permittedModules as string[]) || undefined;
+
+      return {
+        method: 'firebase' as const,
+        tenantId,
+        role,
+        clientId,
+        assignedClients,
+        userId: decodedToken.uid,
+        permittedModules,
+        permissions: derivePermissions(role),
+      };
+    } catch {
+      // Cookie token invalid or expired — fall through to unauthenticated
+    }
+  }
+
   // ─── No credentials ────────────────────────────────────────────────────
   return {
     error: true,

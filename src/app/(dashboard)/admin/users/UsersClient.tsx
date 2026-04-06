@@ -11,29 +11,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UserPlus, Search, MoreHorizontal, Mail, Ban, CheckCircle, Trash2 } from 'lucide-react';
 
-/** Simple fetch helper — gets token from Firebase client SDK lazily */
-async function authedFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
-  };
-  
-  if (typeof window !== 'undefined') {
-    try {
-      const { auth } = await import('@/lib/firebase/client');
-      const user = auth.currentUser;
-      if (user) {
-        const token = await user.getIdToken();
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-      }
-    } catch (e) {
-      console.warn('Failed to get auth token:', e);
-    }
-  }
-
+/** Fetch helper — relies on __session cookie sent automatically by the browser */
+function authedFetch(path: string, options: RequestInit = {}): Promise<Response> {
   return fetch(`/api/v1/exchange/prod/api${path.startsWith('/') ? path : '/' + path}`, {
     ...options,
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> || {}),
+    },
+    credentials: 'same-origin',
   });
 }
 
