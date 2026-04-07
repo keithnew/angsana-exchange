@@ -4,10 +4,11 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 import { authenticateRequest } from '@/lib/api/middleware/auth';
 import { errorResponse } from '@/lib/api/response';
 import { DEFAULT_TENANT_ID } from '@/lib/api/config';
+import { sendPasswordResetEmail } from '@/lib/firebase/send-password-reset';
 
 export const runtime = 'nodejs';
 
@@ -44,7 +45,9 @@ export async function POST(
       return errorResponse('FORBIDDEN', 'Client-approver can only resend invites within their own client.');
     }
 
-    await adminAuth.generatePasswordResetLink(userData.email);
+    // Send the actual email via the Firebase Auth REST API
+    // (Admin SDK's generatePasswordResetLink only returns a URL — it does NOT send an email)
+    await sendPasswordResetEmail(userData.email);
 
     return NextResponse.json({ success: true, userId: uid, passwordResetSent: true });
   } catch (err: unknown) {

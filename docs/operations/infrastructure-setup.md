@@ -118,16 +118,10 @@ No custom service accounts needed. Exchange talks to its own Firestore in the sa
 gcloud builds submit \
   --project=angsana-exchange \
   --region=europe-west2 \
-  --tag=europe-west2-docker.pkg.dev/angsana-exchange/exchange-images/exchange:latest \
-  --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyAZ2V2si0JRo0T7lFZDdS-Gudk0WtgttJo \
-  --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=angsana-exchange.firebaseapp.com \
-  --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=angsana-exchange \
-  --build-arg=NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=angsana-exchange.firebasestorage.app \
-  --build-arg=NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=33083036927 \
-  --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=1:33083036927:web:80d54dd51a99ad1ed8e8ca
+  --tag=europe-west2-docker.pkg.dev/angsana-exchange/exchange-images/exchange:latest
 ```
 
-> **Note:** NEXT_PUBLIC_* values are public by design — they appear in the browser JavaScript. They are Firebase client config, not secrets.
+> **Note:** No `--build-arg` flags are needed. The `NEXT_PUBLIC_*` values are read automatically by Next.js from `.env.production` in the project root, which is copied into the Docker image during the build stage. These values are public by design — they appear in the browser JavaScript. They are Firebase client config, not secrets.
 
 ### Deploy to Cloud Run
 
@@ -311,7 +305,7 @@ This URL does not change unless the Cloud Run service is deleted and recreated. 
 
 ```
 angsana-exchange/
-├── Dockerfile                 # Multi-stage build with NEXT_PUBLIC_* build args
+├── Dockerfile                 # Multi-stage build (NEXT_PUBLIC_* read from .env.production)
 ├── .dockerignore              # Excludes node_modules, .next, .env, SA keys
 ├── next.config.ts             # output: 'standalone' for Docker builds
 ├── firebase.json              # Firebase config (Firestore rules, indexes)
@@ -382,13 +376,7 @@ For each deployment:
    gcloud builds submit \
      --project=angsana-exchange \
      --region=europe-west2 \
-     --tag=europe-west2-docker.pkg.dev/angsana-exchange/exchange-images/exchange:latest \
-     --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyAZ2V2si0JRo0T7lFZDdS-Gudk0WtgttJo \
-     --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=angsana-exchange.firebaseapp.com \
-     --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=angsana-exchange \
-     --build-arg=NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=angsana-exchange.firebasestorage.app \
-     --build-arg=NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=33083036927 \
-     --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=1:33083036927:web:80d54dd51a99ad1ed8e8ca
+     --tag=europe-west2-docker.pkg.dev/angsana-exchange/exchange-images/exchange:latest
    ```
 
 2. Deploy:
@@ -416,6 +404,56 @@ For each deployment:
    ```
 
 4. Smoke test: log in with keith@angsana.com, verify campaigns load.
+
+---
+
+## Firebase Auth Email (Custom SMTP)
+
+Firebase Auth emails (password reset invitations, email verification) are sent via Google Workspace SMTP relay using a custom sender address.
+
+### Firebase Console SMTP Settings
+
+Configured in **Firebase Console → Authentication → Templates → SMTP settings**:
+
+| Setting | Value |
+|---------|-------|
+| Sender address | `noreply@angsana-uk.com` |
+| SMTP server host | `smtp-relay.gmail.com` |
+| SMTP server port | `587` |
+| SMTP account username | Ryan Bronstein's Google Workspace email |
+| SMTP account password | App Password (generated via Google Account → App Passwords) |
+| SMTP security mode | `STARTTLS` |
+
+### Google Workspace SMTP Relay
+
+Configured in **Google Workspace Admin → Apps → Google Workspace → Gmail → Routing → SMTP relay service**:
+
+| Rule | Description | Auth Method |
+|------|-------------|-------------|
+| Firebase Auth emails | For Firebase password reset/invite emails | SMTP Authentication + Require TLS |
+
+### Prerequisites
+
+- Ryan's Google Workspace account must have **2-Step Verification enabled** (enabled in Google Workspace Admin → Security → Authentication → 2-step verification)
+- An **App Password** must be generated from Ryan's account at `https://myaccount.google.com/apppasswords`
+- The `noreply@angsana-uk.com` group alias must exist in Google Workspace
+
+### How It Works
+
+1. User is invited via Exchange UI → API creates Firebase Auth user → calls `sendOobCode` REST API
+2. Firebase Auth sends password reset email using the custom SMTP settings
+3. Email goes through `smtp-relay.gmail.com` authenticated with Ryan's App Password
+4. Email arrives from `noreply@angsana-uk.com` (not the default Firebase sender)
+
+### Code Reference
+
+The invitation email is triggered by `src/lib/firebase/send-password-reset.ts` which calls the Firebase Identity Toolkit REST API (`sendOobCode`) rather than the Admin SDK's `generatePasswordResetLink`. This approach lets Firebase handle SMTP delivery using the custom SMTP configuration above.
+
+### If App Password Expires or Needs Rotation
+
+1. Sign in as Ryan → `https://myaccount.google.com/apppasswords`
+2. Revoke old password and create a new one
+3. Update the password in **Firebase Console → Authentication → Templates → SMTP settings**
 
 ---
 

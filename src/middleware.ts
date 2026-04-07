@@ -12,13 +12,16 @@ export const runtime = 'nodejs';
  *
  * Flow:
  * 1. Read __session cookie (set by POST /api/auth/session after login)
+ *    — OR — Authorization: Bearer {token} header (for API routes called via curl/programmatic)
  * 2. Verify the Firebase ID token using Admin SDK
  * 3. Extract custom claims (tenantId, role, clientId, assignedClients, permittedModules)
  * 4. Forward claims as request headers for server components and API routes
- * 5. Redirect to /login if token is missing, invalid, or expired
+ * 5. Redirect to /login if token is missing, invalid, or expired (pages)
+ *    — OR — return 401 JSON (API routes)
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApiRoute = pathname.startsWith('/api/');
 
   // Public routes — no auth required
   // /api/v1/* is excluded because the Exchange programmatic API handles its own
@@ -29,10 +32,25 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Read the session cookie
-  const token = request.cookies.get('__session')?.value;
+  // Resolve the token from either:
+  // 1. __session cookie (browser UI)
+  // 2. Authorization: Bearer header (curl / programmatic callers)
+  let token = request.cookies.get('__session')?.value;
 
   if (!token) {
+    const authHeader = request.headers.get('authorization') || '';
+    if (authHeader.startsWith('Bearer ') && authHeader.length > 7) {
+      token = authHeader.slice(7).trim();
+    }
+  }
+
+  if (!token) {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { error: 'Authentication required. Provide a session cookie or Authorization: Bearer token.', code: 'UNAUTHORIZED' },
+        { status: 401 }
+      );
+    }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
@@ -62,6 +80,12 @@ export async function middleware(request: NextRequest) {
       request: { headers: requestHeaders },
     });
   } catch {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { error: 'Invalid or expired authentication token.', code: 'UNAUTHORIZED' },
+        { status: 401 }
+      );
+    }
     // Token invalid or expired — redirect to login
     const response = NextResponse.redirect(new URL('/login', request.url));
     // Clear the invalid cookie

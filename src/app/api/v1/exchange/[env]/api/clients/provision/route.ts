@@ -11,6 +11,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { authenticateRequest } from '@/lib/api/middleware/auth';
 import { errorResponse } from '@/lib/api/response';
 import { DEFAULT_TENANT_ID } from '@/lib/api/config';
+import { sendPasswordResetEmail } from '@/lib/firebase/send-password-reset';
 import type { UserRole } from '@/types';
 
 export const runtime = 'nodejs';
@@ -121,10 +122,11 @@ export async function POST(request: NextRequest) {
       disabledBy: null,
     }, { merge: true });
 
-    // Send password reset
+    // Send password reset email via Firebase Auth REST API
+    // (Admin SDK's generatePasswordResetLink only returns a URL — it does NOT send an email)
     let passwordResetSent = false;
     try {
-      await adminAuth.generatePasswordResetLink(firstUser.email);
+      await sendPasswordResetEmail(firstUser.email);
       passwordResetSent = true;
     } catch { /* non-fatal */ }
 
