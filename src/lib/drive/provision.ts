@@ -133,7 +133,7 @@ export async function provisionClientFolders(
   clientName: string
 ): Promise<ProvisionResult> {
   // ── 1. Create the Shared Drive via impersonated client ──────────────────
-  const impersonatedDrive = getDriveClientWithImpersonation();
+  const impersonatedDrive = await getDriveClientWithImpersonation();
   const sharedDriveName = `${clientName} (Client)`;
 
   const sharedDriveResponse = await impersonatedDrive.drives.create({
@@ -151,7 +151,7 @@ export async function provisionClientFolders(
   // ── 2. Add SA as Content Manager (organizer) ────────────────────────────
   // This allows the SA to operate without impersonation for all subsequent
   // operations (browse, upload, download, folder creation).
-  const saEmail = getSAEmail();
+  const saEmail = await getSAEmail();
 
   await impersonatedDrive.permissions.create({
     fileId: sharedDriveId,

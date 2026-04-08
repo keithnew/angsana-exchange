@@ -3,11 +3,16 @@
 // Slice 7A: Google Drive API Connectivity & Browse Endpoint
 //
 // Provides two Drive v3 clients:
-//   getDriveClient()                  — SA acting as itself (Content Manager)
-//   getDriveClientWithImpersonation() — SA impersonating a Workspace user
+//   getDriveClient()                        — SA acting as itself (Content Manager)
+//   getDriveClientWithImpersonation()       — SA impersonating a Workspace user
 //
-// Credentials are loaded once from GOOGLE_APPLICATION_CREDENTIALS (locally)
-// or the Cloud Run metadata server and shared between both clients.
+// Credential loading strategy (for impersonation + SA email):
+//   1. GOOGLE_APPLICATION_CREDENTIALS file path (local dev)
+//   2. Secret Manager: fetch `firebase-admin-sa-key` secret (Cloud Run)
+//
+// The regular getDriveClient() uses GoogleAuth (ADC) and never needs the
+// key file — it works with both GOOGLE_APPLICATION_CREDENTIALS and the
+// Cloud Run metadata server automatically.
 //
 // Impersonation is ONLY needed for drives.create (creating Shared Drives).
 // All other operations (browse, upload, download, folder creation inside a
@@ -16,6 +21,7 @@
 
 import { google, type drive_v3 } from 'googleapis';
 import * as fs from 'fs';
+import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
 // ─── Shared credential loading ───────────────────────────────────────────────
 
@@ -27,30 +33,78 @@ interface SACredentials {
 let cachedCredentials: SACredentials | null = null;
 
 /**
- * Load SA credentials from the JSON key file specified by
- * GOOGLE_APPLICATION_CREDENTIALS. Returns null if the env var isn't set
- * (Cloud Run metadata-server path where no key file exists, though the
- * impersonation client requires explicit credentials).
+ * Load SA credentials from GOOGLE_APPLICATION_CREDENTIALS (local dev)
+ * or Secret Manager (Cloud Run).
+ *
+ * Strategy:
+ *   1. If GOOGLE_APPLICATION_CREDENTIALS is set, read the key file from disk
+ *   2. Otherwise, fetch the SA key JSON from Secret Manager using the secret
+ *      name in FIREBASE_SA_SECRET_NAME (defaults to 'firebase-admin-sa-key')
+ *
+ * On Cloud Run, GOOGLE_APPLICATION_CREDENTIALS is NOT set — the regular
+ * Firebase Admin SDK uses the metadata server (ADC). But the impersonation
+ * client needs the actual private key for JWT auth, so we fetch it from
+ * Secret Manager.
  *
  * Credentials are loaded once and cached for the process lifetime.
  */
-function loadSACredentials(): SACredentials | null {
+async function loadSACredentials(): Promise<SACredentials> {
   if (cachedCredentials) return cachedCredentials;
 
+  // ── Path 1: Local dev — key file on disk ────────────────────────────────
   const keyFilePath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!keyFilePath) return null;
+  if (keyFilePath) {
+    try {
+      const raw = fs.readFileSync(keyFilePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      cachedCredentials = {
+        client_email: parsed.client_email,
+        private_key: parsed.private_key,
+      };
+      console.log('[drive/client] Loaded SA credentials from GOOGLE_APPLICATION_CREDENTIALS');
+      return cachedCredentials;
+    } catch (err) {
+      console.error('[drive/client] Failed to load SA credentials from', keyFilePath, err);
+      throw new Error(`Failed to load SA credentials from ${keyFilePath}`);
+    }
+  }
+
+  // ── Path 2: Cloud Run — fetch from Secret Manager ───────────────────────
+  const secretName = process.env.FIREBASE_SA_SECRET_NAME || 'firebase-admin-sa-key';
+  const projectId = process.env.GCP_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'angsana-exchange';
 
   try {
-    const raw = fs.readFileSync(keyFilePath, 'utf-8');
+    const client = new SecretManagerServiceClient();
+    const [version] = await client.accessSecretVersion({
+      name: `projects/${projectId}/secrets/${secretName}/versions/latest`,
+    });
+
+    const payload = version.payload?.data;
+    if (!payload) {
+      throw new Error('Secret Manager returned empty payload');
+    }
+
+    const raw = typeof payload === 'string' ? payload : payload.toString('utf-8');
     const parsed = JSON.parse(raw);
+
+    if (!parsed.client_email || !parsed.private_key) {
+      throw new Error('Secret JSON is missing client_email or private_key');
+    }
+
     cachedCredentials = {
       client_email: parsed.client_email,
       private_key: parsed.private_key,
     };
+
+    console.log('[drive/client] Loaded SA credentials from Secret Manager:', secretName);
     return cachedCredentials;
   } catch (err) {
-    console.error('[drive/client] Failed to load SA credentials from', keyFilePath, err);
-    return null;
+    console.error('[drive/client] Failed to load SA credentials from Secret Manager:', err);
+    throw new Error(
+      `Cannot load SA credentials: GOOGLE_APPLICATION_CREDENTIALS is not set and ` +
+      `Secret Manager fetch for "${secretName}" failed. ` +
+      `JWT-based impersonation requires the SA private key.`
+    );
   }
 }
 
@@ -93,21 +147,17 @@ let impersonatedDriveClient: drive_v3.Drive | null = null;
  * on each Shared Drive.
  *
  * The impersonation target is read from DRIVE_IMPERSONATION_EMAIL env var.
- * Requires GOOGLE_APPLICATION_CREDENTIALS to be set (JWT auth needs the
- * SA's private key — metadata server auth cannot impersonate).
+ *
+ * Credentials are loaded from GOOGLE_APPLICATION_CREDENTIALS (local dev)
+ * or Secret Manager (Cloud Run). This is async because the Secret Manager
+ * call is async.
  *
  * @throws Error if credentials or impersonation email are not configured
  */
-export function getDriveClientWithImpersonation(): drive_v3.Drive {
+export async function getDriveClientWithImpersonation(): Promise<drive_v3.Drive> {
   if (impersonatedDriveClient) return impersonatedDriveClient;
 
-  const credentials = loadSACredentials();
-  if (!credentials) {
-    throw new Error(
-      'Cannot create impersonated Drive client: GOOGLE_APPLICATION_CREDENTIALS is not set or the key file could not be read. ' +
-      'JWT-based impersonation requires an explicit SA key file.'
-    );
-  }
+  const credentials = await loadSACredentials();
 
   const impersonationEmail = process.env.DRIVE_IMPERSONATION_EMAIL;
   if (!impersonationEmail) {
@@ -129,17 +179,16 @@ export function getDriveClientWithImpersonation(): drive_v3.Drive {
 }
 
 /**
- * Returns the SA's own email address from the cached credentials.
+ * Returns the SA's own email address.
  * Used by provision.ts to add the SA as a Content Manager on new Shared Drives.
  *
- * @throws Error if credentials are not loaded
+ * Credentials are loaded from GOOGLE_APPLICATION_CREDENTIALS (local dev)
+ * or Secret Manager (Cloud Run). This is async because the Secret Manager
+ * call is async.
+ *
+ * @throws Error if credentials cannot be loaded
  */
-export function getSAEmail(): string {
-  const credentials = loadSACredentials();
-  if (!credentials) {
-    throw new Error(
-      'Cannot get SA email: GOOGLE_APPLICATION_CREDENTIALS is not set or the key file could not be read.'
-    );
-  }
+export async function getSAEmail(): Promise<string> {
+  const credentials = await loadSACredentials();
   return credentials.client_email;
 }

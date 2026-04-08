@@ -103,9 +103,17 @@ No custom service accounts needed. Exchange talks to its own Firestore in the sa
 
 | Secret Name | Purpose | Used By |
 |-------------|---------|---------|
-| `firebase-admin-sa-key` | Firebase Admin SDK service account key | Local development only |
+| `firebase-admin-sa-key` | Firebase Admin SDK service account key (JSON) | Local dev (via `GOOGLE_APPLICATION_CREDENTIALS`), Cloud Run (via Secret Manager API for Drive impersonation) |
 
-> On Cloud Run, no SA key is needed — Application Default Credentials are used via the metadata service. The `admin.ts` code handles both paths automatically.
+> On Cloud Run, the Firebase Admin SDK uses ADC (metadata server) — no key file needed. However, the Drive impersonation client (`src/lib/drive/client.ts`) needs the SA's private key for JWT-based domain-wide delegation. On Cloud Run, it fetches the key from Secret Manager at runtime. The Cloud Run service account needs `roles/secretmanager.secretAccessor` on this secret.
+>
+> ```bash
+> # Grant Secret Manager access to the Cloud Run default SA (if not already done):
+> gcloud secrets add-iam-policy-binding firebase-admin-sa-key \
+>   --project=angsana-exchange \
+>   --member="serviceAccount:33083036927-compute@developer.gserviceaccount.com" \
+>   --role="roles/secretmanager.secretAccessor"
+> ```
 
 ---
 
@@ -174,6 +182,7 @@ firebase deploy --only hosting --project angsana-exchange
 | `GCP_PROJECT_ID` | `angsana-exchange` | GCP project for service discovery |
 | `GCP_REGION` | `europe-west2` | Region for resource location |
 | `NODE_ENV` | `production` | Next.js production mode |
+| `DRIVE_IMPERSONATION_EMAIL` | `keith.new2@angsana-uk.com` | Workspace user for Shared Drive creation (domain-wide delegation) |
 
 ### What Is NOT Needed on Cloud Run
 
