@@ -236,6 +236,7 @@ export function ProspectingProfileClient({
 
   // ─── Market Messaging ────────────────────────────────────────────────────
   const [showMsgForm, setShowMsgForm] = useState(false);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [msgForm, setMsgForm] = useState({
     title: '', type: '', content: '', documentRef: '', externalUrl: '', notes: '', propositionRefs: [] as string[],
   });
@@ -287,8 +288,37 @@ export function ProspectingProfileClient({
     await saveMessaging(updated);
   }, [profile.marketMessaging, saveMessaging]);
 
+  const startEditMsg = useCallback((entry: MarketMessagingEntry) => {
+    setEditingMsgId(entry.id);
+    setMsgForm({
+      title: entry.title,
+      type: entry.type,
+      content: entry.content || '',
+      documentRef: entry.documentRef || '',
+      externalUrl: entry.externalUrl || '',
+      notes: entry.notes || '',
+      propositionRefs: entry.propositionRefs || [],
+    });
+  }, []);
+
+  const saveEditedMsg = useCallback(async () => {
+    if (!editingMsgId) return;
+    const updated = profile.marketMessaging.map((e) =>
+      e.id === editingMsgId ? { ...e, ...msgForm } : e
+    );
+    await saveMessaging(updated);
+    setEditingMsgId(null);
+    setMsgForm({ title: '', type: '', content: '', documentRef: '', externalUrl: '', notes: '', propositionRefs: [] });
+  }, [editingMsgId, msgForm, profile.marketMessaging, saveMessaging]);
+
+  const cancelEditMsg = useCallback(() => {
+    setEditingMsgId(null);
+    setMsgForm({ title: '', type: '', content: '', documentRef: '', externalUrl: '', notes: '', propositionRefs: [] });
+  }, []);
+
   // ─── Recommendations ─────────────────────────────────────────────────────
   const [showRecForm, setShowRecForm] = useState(false);
+  const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [recForm, setRecForm] = useState({ recommendation: '', rationale: '', propositionRefs: [] as string[] });
 
   const saveRecommendations = useCallback(async (recs: Recommendation[]) => {
@@ -340,6 +370,30 @@ export function ProspectingProfileClient({
     );
     await saveRecommendations(updated);
   }, [profile.recommendations, saveRecommendations, userUid]);
+
+  const startEditRec = useCallback((rec: Recommendation) => {
+    setEditingRecId(rec.id);
+    setRecForm({
+      recommendation: rec.recommendation,
+      rationale: rec.rationale || '',
+      propositionRefs: rec.propositionRefs || [],
+    });
+  }, []);
+
+  const saveEditedRec = useCallback(async () => {
+    if (!editingRecId) return;
+    const updated = profile.recommendations.map((r) =>
+      r.id === editingRecId ? { ...r, ...recForm, lastUpdatedBy: userUid, lastUpdatedAt: new Date().toISOString() } : r
+    );
+    await saveRecommendations(updated);
+    setEditingRecId(null);
+    setRecForm({ recommendation: '', rationale: '', propositionRefs: [] });
+  }, [editingRecId, recForm, profile.recommendations, saveRecommendations, userUid]);
+
+  const cancelEditRec = useCallback(() => {
+    setEditingRecId(null);
+    setRecForm({ recommendation: '', rationale: '', propositionRefs: [] });
+  }, []);
 
   // ─── AI Review ───────────────────────────────────────────────────────────
   const [aiLoading, setAiLoading] = useState(false);
@@ -847,42 +901,97 @@ export function ProspectingProfileClient({
         <div className="mt-4 space-y-3">
           {profile.marketMessaging.map((entry) => (
             <div key={entry.id} className="rounded-lg border border-gray-200 px-4 py-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                    {resolveLabel(entry.type, messagingTypes)}
-                  </span>
-                  <span className="text-sm font-medium text-gray-900">{entry.title}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {entry.externalUrl && (
-                    <a href={entry.externalUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+              {editingMsgId === entry.id ? (
+                /* ─── Messaging INLINE EDIT ─── */
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Title</label>
+                    <input className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" maxLength={120}
+                      value={msgForm.title} onChange={(e) => setMsgForm({ ...msgForm, title: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Type</label>
+                    <select className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                      value={msgForm.type} onChange={(e) => setMsgForm({ ...msgForm, type: e.target.value })}>
+                      <option value="">Select…</option>
+                      {messagingTypes.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Content</label>
+                    <textarea className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" rows={3} maxLength={500}
+                      value={msgForm.content} onChange={(e) => setMsgForm({ ...msgForm, content: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">External URL</label>
+                    <input className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                      value={msgForm.externalUrl} onChange={(e) => setMsgForm({ ...msgForm, externalUrl: e.target.value })} placeholder="https://…" />
+                  </div>
+                  {isInternal(userRole) && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">Internal Notes</label>
+                      <textarea className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" rows={2} maxLength={280}
+                        value={msgForm.notes} onChange={(e) => setMsgForm({ ...msgForm, notes: e.target.value })} />
+                    </div>
                   )}
-                  {entry.documentRef && (
-                    <span className="text-gray-400"><FileText className="h-3.5 w-3.5" /></span>
-                  )}
-                  {canEditMessaging(userRole) && (
-                    <button type="button" className="text-red-400 hover:text-red-600" onClick={() => removeMessagingEntry(entry.id)}>
-                      <X className="h-3.5 w-3.5" />
+                  <div className="flex gap-2">
+                    <button type="button" disabled={saving || !msgForm.title.trim()}
+                      className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-[#004156] hover:bg-[#003040] disabled:opacity-50"
+                      onClick={saveEditedMsg}>
+                      {saving ? 'Saving…' : 'Update'}
                     </button>
+                    <button type="button" className="px-4 py-1.5 rounded-full text-sm font-medium text-gray-600 bg-gray-200 hover:bg-gray-300"
+                      onClick={cancelEditMsg}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ─── Messaging READ ─── */
+                <>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                        {resolveLabel(entry.type, messagingTypes)}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900">{entry.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {entry.externalUrl && (
+                        <a href={entry.externalUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      {entry.documentRef && (
+                        <span className="text-gray-400"><FileText className="h-3.5 w-3.5" /></span>
+                      )}
+                      {canEditMessaging(userRole) && (
+                        <>
+                          <button type="button" className="text-gray-400 hover:text-gray-600" onClick={() => startEditMsg(entry)}>
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" className="text-red-400 hover:text-red-600" onClick={() => removeMessagingEntry(entry.id)}>
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {entry.content && (
+                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">{entry.content}</p>
                   )}
-                </div>
-              </div>
-              {entry.content && (
-                <p className="text-sm text-gray-600 mt-2 line-clamp-2">{entry.content}</p>
-              )}
-              {entry.propositionRefs.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {entry.propositionRefs.map((pId) => {
-                    const prop = propositions.find((p) => p.id === pId);
-                    return prop ? <TagPill key={pId} label={prop.name} variant="mauve" /> : null;
-                  })}
-                </div>
-              )}
-              {isInternal(userRole) && entry.notes && (
-                <p className="text-xs text-gray-500 mt-2 border-t border-gray-100 pt-2 italic">{entry.notes}</p>
+                  {entry.propositionRefs.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {entry.propositionRefs.map((pId) => {
+                        const prop = propositions.find((p) => p.id === pId);
+                        return prop ? <TagPill key={pId} label={prop.name} variant="mauve" /> : null;
+                      })}
+                    </div>
+                  )}
+                  {isInternal(userRole) && entry.notes && (
+                    <p className="text-xs text-gray-500 mt-2 border-t border-gray-100 pt-2 italic">{entry.notes}</p>
+                  )}
+                </>
               )}
             </div>
           ))}
@@ -963,31 +1072,66 @@ export function ProspectingProfileClient({
           <div className="mt-4 space-y-3">
             {profile.recommendations.map((rec) => (
               <div key={rec.id} className="rounded-lg border border-gray-200 px-4 py-3">
-                <div className="flex items-start justify-between">
-                  <p className="text-sm text-gray-900 font-medium flex-1">{rec.recommendation}</p>
-                  <div className="flex items-center gap-2 ml-3">
-                    <StatusBadge {...RECOMMENDATION_STATUS_CONFIG[rec.status]} />
-                    <select
-                      className="text-xs rounded border border-gray-200 px-1 py-0.5"
-                      value={rec.status}
-                      onChange={(e) => updateRecStatus(rec.id, e.target.value as RecommendationStatus)}
-                    >
-                      <option value="proposed">Proposed</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="superseded">Superseded</option>
-                    </select>
+                {editingRecId === rec.id ? (
+                  /* ─── Recommendation INLINE EDIT ─── */
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">Recommendation</label>
+                      <textarea className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" rows={2} maxLength={280}
+                        value={recForm.recommendation} onChange={(e) => setRecForm({ ...recForm, recommendation: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">Rationale</label>
+                      <textarea className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm" rows={2} maxLength={500}
+                        value={recForm.rationale} onChange={(e) => setRecForm({ ...recForm, rationale: e.target.value })} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={saving || !recForm.recommendation.trim()}
+                        className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-[#004156] hover:bg-[#003040] disabled:opacity-50"
+                        onClick={saveEditedRec}>
+                        {saving ? 'Saving…' : 'Update'}
+                      </button>
+                      <button type="button" className="px-4 py-1.5 rounded-full text-sm font-medium text-gray-600 bg-gray-200 hover:bg-gray-300"
+                        onClick={cancelEditRec}>
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
-                {rec.rationale && (
-                  <p className="text-sm text-gray-500 mt-2 italic">{rec.rationale}</p>
-                )}
-                {rec.propositionRefs.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {rec.propositionRefs.map((pId) => {
-                      const prop = propositions.find((p) => p.id === pId);
-                      return prop ? <TagPill key={pId} label={prop.name} variant="mauve" /> : null;
-                    })}
-                  </div>
+                ) : (
+                  /* ─── Recommendation READ ─── */
+                  <>
+                    <div className="flex items-start justify-between">
+                      <p className="text-sm text-gray-900 font-medium flex-1">{rec.recommendation}</p>
+                      <div className="flex items-center gap-2 ml-3">
+                        <StatusBadge {...RECOMMENDATION_STATUS_CONFIG[rec.status]} />
+                        <select
+                          className="text-xs rounded border border-gray-200 px-1 py-0.5"
+                          value={rec.status}
+                          onChange={(e) => updateRecStatus(rec.id, e.target.value as RecommendationStatus)}
+                        >
+                          <option value="proposed">Proposed</option>
+                          <option value="accepted">Accepted</option>
+                          <option value="superseded">Superseded</option>
+                        </select>
+                        {canEditRecommendations(userRole) && (
+                          <button type="button" className="text-gray-400 hover:text-gray-600" onClick={() => startEditRec(rec)}>
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {rec.rationale && (
+                      <p className="text-sm text-gray-500 mt-2 italic">{rec.rationale}</p>
+                    )}
+                    {rec.propositionRefs.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {rec.propositionRefs.map((pId) => {
+                          const prop = propositions.find((p) => p.id === pId);
+                          return prop ? <TagPill key={pId} label={prop.name} variant="mauve" /> : null;
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             ))}
