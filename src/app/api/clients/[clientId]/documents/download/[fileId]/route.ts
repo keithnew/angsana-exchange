@@ -19,7 +19,7 @@
 //   - If the file is NOT registered (unregistered Drive file), download proceeds
 //     (to avoid breaking access to files not yet imported into the registry)
 //
-// Access: internal-admin, internal-user, and client-approver (with visibility check).
+// Access: All authenticated roles with client access (visibility check enforced).
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -73,14 +73,9 @@ export async function GET(
   const { clientId, fileId } = await params;
   const user = getUserFromHeaders(request);
 
-  // ── Auth: internal roles + client-approver can download ─────────────────
-  const canDownload = isInternal(user.role) || isClientApprover(user.role);
-  if (!canDownload) {
-    return NextResponse.json(
-      { error: 'Forbidden: insufficient permissions to download documents', code: 'FORBIDDEN' },
-      { status: 403 }
-    );
-  }
+  // ── Auth: all authenticated users with client access can download ───────
+  // Visibility filtering (internal-only vs client-visible) is enforced below
+  // via the registry guard for managed clients.
 
   if (!hasClientAccess(user, clientId)) {
     return NextResponse.json(
@@ -151,9 +146,9 @@ export async function GET(
           );
         }
 
-        // Client-approver visibility check: ensure the document's visibility
-        // allows client access
-        if (isClientApprover(user.role) && registryData.visibility === 'internal-only') {
+        // Client user visibility check: ensure the document's visibility
+        // allows client access (client-approver and client-viewer)
+        if (!isInternal(user.role) && registryData.visibility === 'internal-only') {
           return NextResponse.json(
             { error: 'Forbidden: this document is internal-only', code: 'FORBIDDEN' },
             { status: 403 }

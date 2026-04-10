@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG, SOWHAT_STATUS_CONFIG, SOWHAT_ORIENTATION_CONFIG } from '@/types';
 import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus, SoWhat } from '@/types';
+import CampaignDocumentsCard from '@/components/documents/CampaignDocumentsCard';
 
 // =============================================================================
 // Helpers
@@ -785,9 +786,13 @@ export function CampaignDetailClient({
         </CardContent>
       </Card>
 
+      {/* Documents */}
+      <div className="mb-6">
+        <CampaignDocumentsCard clientId={clientId} campaignId={campaign.id} />
+      </div>
+
       {/* Placeholder Sections */}
       <div className="mb-6 space-y-4">
-        <PlaceholderSection title="Scripts" />
         <PlaceholderSection title="Email Cadences" />
         <PlaceholderSection title="Research Brief" />
         <PlaceholderSection title="Directives" />

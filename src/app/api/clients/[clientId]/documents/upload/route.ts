@@ -228,6 +228,7 @@ export async function POST(
         campaignRef: campaignRef || null,
         registrySource: 'exchange_upload',
         uploadedBy: user.uid,
+        uploadedByName: user.email || user.uid,
         uploadedAt: now,
         lastModifiedAt: now,
         lastModifiedBy: user.uid,

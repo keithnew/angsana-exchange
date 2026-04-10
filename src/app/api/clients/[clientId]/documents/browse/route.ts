@@ -43,6 +43,7 @@ interface BrowseRegistryItem {
   folderCategory: string;
   visibility: string;
   uploadedBy: string;
+  uploadedByName: string;
   uploadedAt: string;
   campaignRef: string | null;
   status: string;
@@ -90,6 +91,7 @@ export async function GET(
   const requestedFolderId = searchParams.get('folderId');
   const source = searchParams.get('source');
   const filterCategory = searchParams.get('folderCategory');
+  const campaignFilter = searchParams.get('campaign');
 
   // ── Read client config ──────────────────────────────────────────────────
   const configDoc = await adminDb
@@ -237,9 +239,16 @@ export async function GET(
 
     // Query for active documents in visible categories
     // Firestore `in` operator supports up to 30 values — our template has ~9
-    const snapshot = await documentsRef
+    let query = documentsRef
       .where('status', '==', 'active')
-      .where('folderCategory', 'in', targetCategories.length > 0 ? targetCategories : ['__none__'])
+      .where('folderCategory', 'in', targetCategories.length > 0 ? targetCategories : ['__none__']);
+
+    // Apply campaign filter if provided
+    if (campaignFilter) {
+      query = query.where('campaignRef', '==', campaignFilter);
+    }
+
+    const snapshot = await query
       .orderBy('uploadedAt', 'desc')
       .get();
 
@@ -283,6 +292,7 @@ export async function GET(
           folderCategory: category,
           visibility: data.visibility,
           uploadedBy: data.uploadedBy,
+          uploadedByName: data.uploadedByName || data.uploadedBy || '',
           uploadedAt: data.uploadedAt,
           campaignRef: data.campaignRef || null,
           status: data.status,
@@ -342,6 +352,7 @@ export async function GET(
         totalFolders: sortedGroups.length,
         hasUnregisteredContent,
         visibilityFilter: isInternalUser ? 'all' : 'client-visible',
+        campaignFilter: campaignFilter || null,
       },
     });
   } catch (err) {

@@ -256,6 +256,7 @@ export async function POST(
     campaignRef: campaignRef || null,
     registrySource: 'manual_import',
     uploadedBy: user.uid,
+    uploadedByName: user.email || user.uid,
     uploadedAt: fileMetadata.createdTime,
     lastModifiedAt: now,
     lastModifiedBy: user.uid,
