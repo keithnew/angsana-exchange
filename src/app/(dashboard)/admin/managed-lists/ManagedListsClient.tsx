@@ -17,6 +17,7 @@ const LIST_NAMES: ManagedListName[] = [
   'therapyAreas',
   'propositionCategories',
   'messagingTypes',
+  'buyingProcessTypes',
 ];
 
 type ActiveTab = ManagedListName | 'documentFolders';

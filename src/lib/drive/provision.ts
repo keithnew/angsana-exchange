@@ -18,17 +18,8 @@
 import { getDriveClientAsSA, getDriveClientWithImpersonation, getSAEmail } from './client';
 import { DRIVE_FOLDER_MIME_TYPE } from './types';
 import type { DocumentFolderItem, FolderMapEntry } from '@/types';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Max retry attempts for folder creation (handles permission propagation delay) */
-const FOLDER_CREATE_MAX_RETRIES = 5;
-
-/** Delay between retries in ms */
-const FOLDER_CREATE_RETRY_DELAY_MS = 2000;
-
-/** HTTP status codes that indicate propagation-related transient errors */
-const RETRYABLE_STATUS_CODES = [404, 403];
+import { logger, SVC_DRIVE_PROVISION } from '@/lib/logging';
+import { withRetry, isDrivePropagationError } from '@/lib/retry';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,30 +53,8 @@ export interface ProvisionResult {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
- * Determine if a Drive API error is retryable (propagation-related).
- * Only retry on "File not found" (404) or permission errors (403)
- * that occur immediately after adding SA membership.
- * Do NOT retry on permanent failures (invalid parent, malformed request, auth scope errors).
- */
-function isRetryableError(err: unknown): boolean {
-  const error = err as { code?: number; status?: number; message?: string };
-  const code = error.code || error.status;
-  if (code && RETRYABLE_STATUS_CODES.includes(code)) {
-    return true;
-  }
-  // Also catch "File not found" in error message for wrapped errors
-  const msg = error.message || '';
-  if (msg.includes('File not found') || msg.includes('notFound')) {
-    return true;
-  }
-  return false;
-}
-
-/**
  * Create a single folder inside a Shared Drive, with retry for propagation delays.
- *
- * Uses the regular (non-impersonated) Drive client — the SA is already a
- * Content Manager on the Shared Drive at this point.
+ * Uses the withRetry utility with Drive-specific propagation error classification.
  */
 async function createFolderWithRetry(
   name: string,
@@ -93,8 +62,8 @@ async function createFolderWithRetry(
 ): Promise<string> {
   const drive = await getDriveClientAsSA();
 
-  for (let attempt = 1; attempt <= FOLDER_CREATE_MAX_RETRIES; attempt++) {
-    try {
+  return withRetry(
+    async () => {
       const response = await drive.files.create({
         supportsAllDrives: true,
         requestBody: {
@@ -109,27 +78,18 @@ async function createFolderWithRetry(
       if (!folderId) {
         throw new Error(`Drive API returned no ID when creating folder "${name}"`);
       }
-
-      if (attempt > 1) {
-        console.log(`[drive/provision] Folder "${name}" created on attempt ${attempt}`);
-      }
       return folderId;
-    } catch (err) {
-      if (attempt < FOLDER_CREATE_MAX_RETRIES && isRetryableError(err)) {
-        console.log(
-          `[drive/provision] Retryable error creating folder "${name}" (attempt ${attempt}/${FOLDER_CREATE_MAX_RETRIES}), ` +
-          `waiting ${FOLDER_CREATE_RETRY_DELAY_MS}ms...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, FOLDER_CREATE_RETRY_DELAY_MS));
-        continue;
-      }
-      // Permanent failure or max retries exhausted
-      throw err;
-    }
-  }
-
-  // Should never reach here, but TypeScript needs it
-  throw new Error(`Failed to create folder "${name}" after ${FOLDER_CREATE_MAX_RETRIES} attempts`);
+    },
+    {
+      maxAttempts: 5,
+      initialDelayMs: 2000,
+      backoffMultiplier: 1.5,
+      maxDelayMs: 8000,
+      retryableErrors: isDrivePropagationError,
+      service: 'driveProvisioning',
+      operation: `createFolder("${name}")`,
+    },
+  );
 }
 
 /**
@@ -178,10 +138,9 @@ async function createFoldersFromManagedList(
   for (const item of childItems) {
     const parentFolderId = categoryToFolderId[item.parentCategory!];
     if (!parentFolderId) {
-      console.error(
-        `[drive/provision] Cannot create folder "${item.name}" — ` +
-        `parent category "${item.parentCategory}" not found. Skipping.`
-      );
+      logger.error(SVC_DRIVE_PROVISION, 'createFolderTree',
+        `Cannot create folder "${item.name}" — parent category "${item.parentCategory}" not found. Skipping.`,
+        { folderName: item.name, parentCategory: item.parentCategory });
       continue;
     }
 
@@ -225,7 +184,7 @@ export async function createSharedDrive(
   const impersonatedDrive = await getDriveClientWithImpersonation();
   const sharedDriveName = `${clientName} (Client)`;
 
-  console.log(`[drive/provision] State A: Creating Shared Drive "${sharedDriveName}"...`);
+  logger.info(SVC_DRIVE_PROVISION, 'createSharedDrive', `State A: Creating Shared Drive "${sharedDriveName}"`, { clientId, sharedDriveName });
 
   const sharedDriveResponse = await impersonatedDrive.drives.create({
     requestId: `exchange-${clientId}-${Date.now()}`,
@@ -239,12 +198,12 @@ export async function createSharedDrive(
     throw new Error('Drive API returned no ID when creating Shared Drive');
   }
 
-  console.log(`[drive/provision] State A complete: driveId=${sharedDriveId}`);
+  logger.info(SVC_DRIVE_PROVISION, 'createSharedDrive', `State A complete: driveId=${sharedDriveId}`, { clientId, sharedDriveId });
 
   // ── State B: Add SA as Content Manager (organizer) ──────────────────────
   const saEmail = await getSAEmail();
 
-  console.log(`[drive/provision] State B: Adding SA ${saEmail} as Content Manager...`);
+  logger.info(SVC_DRIVE_PROVISION, 'addSAMember', `State B: Adding SA ${saEmail} as Content Manager`, { sharedDriveId, saEmail });
 
   await impersonatedDrive.permissions.create({
     fileId: sharedDriveId,
@@ -256,7 +215,7 @@ export async function createSharedDrive(
     },
   });
 
-  console.log('[drive/provision] State B complete: SA added as Content Manager');
+  logger.info(SVC_DRIVE_PROVISION, 'addSAMember', 'State B complete: SA added as Content Manager', { sharedDriveId });
 
   return { sharedDriveId, sharedDriveName };
 }
@@ -275,23 +234,23 @@ export async function createFolderTree(
   sharedDriveId: string,
   folderTemplate: DocumentFolderItem[]
 ): Promise<FolderCreationResult> {
-  console.log(`[drive/provision] State D: Creating folder tree in drive ${sharedDriveId}...`);
+  logger.info(SVC_DRIVE_PROVISION, 'createFolderTree', `State D: Creating folder tree in drive ${sharedDriveId}`, { sharedDriveId, templateSize: folderTemplate.length });
 
   // ── Diagnostic: verify SA can see the Shared Drive before creating folders ──
   const drive = await getDriveClientAsSA();
   const saEmail = await getSAEmail();
-  console.log(`[drive/provision] Diagnostic: SA identity for folder ops: ${saEmail}`);
+  logger.debug(SVC_DRIVE_PROVISION, 'createFolderTree', `Diagnostic: SA identity for folder ops: ${saEmail}`, { saEmail });
 
   try {
     const driveInfo = await drive.drives.get({
       driveId: sharedDriveId,
       fields: 'id,name',
     });
-    console.log(`[drive/provision] Diagnostic: drives.get OK — name="${driveInfo.data.name}", id=${driveInfo.data.id}`);
+    logger.debug(SVC_DRIVE_PROVISION, 'createFolderTree', `Diagnostic: drives.get OK — name="${driveInfo.data.name}"`, { driveId: driveInfo.data.id });
   } catch (diagErr) {
     const err = diagErr as { code?: number; message?: string };
-    console.error(`[drive/provision] Diagnostic: drives.get FAILED — code=${err.code}, message=${err.message}`);
-    console.error(`[drive/provision] This means the SA (${saEmail}) cannot see the Shared Drive at all.`);
+    logger.error(SVC_DRIVE_PROVISION, 'createFolderTree',
+      `SA ${saEmail} cannot see Shared Drive — drives.get FAILED`, { code: err.code, saEmail, sharedDriveId });
     throw new Error(
       `SA ${saEmail} cannot access Shared Drive ${sharedDriveId} via drives.get. ` +
       `The SA may not be a member, or there is an identity mismatch. Error: ${err.message}`
@@ -307,10 +266,10 @@ export async function createFolderTree(
       q: 'trashed = false',
       fields: 'files(id,name,parents)',
     });
-    console.log(`[drive/provision] Diagnostic: files.list OK — ${listing.data.files?.length || 0} existing items`);
+    logger.debug(SVC_DRIVE_PROVISION, 'createFolderTree', `Diagnostic: files.list OK — ${listing.data.files?.length || 0} existing items`, { sharedDriveId });
   } catch (diagErr) {
     const err = diagErr as { code?: number; message?: string };
-    console.error(`[drive/provision] Diagnostic: files.list FAILED — code=${err.code}, message=${err.message}`);
+    logger.warn(SVC_DRIVE_PROVISION, 'createFolderTree', `Diagnostic: files.list FAILED — code=${err.code}`, { code: err.code, sharedDriveId });
     // Don't fail here — the drives.get passed, so folder creation may still work
   }
 
@@ -318,10 +277,9 @@ export async function createFolderTree(
   const folderMap: Record<string, FolderMapEntry> = {};
   await createFoldersFromManagedList(folderTemplate, sharedDriveId, folders, folderMap);
 
-  console.log(
-    `[drive/provision] State D complete: ${folders.length} folders created, ` +
-    `${Object.keys(folderMap).length} entries in folderMap`
-  );
+  logger.info(SVC_DRIVE_PROVISION, 'createFolderTree',
+    `State D complete: ${folders.length} folders created, ${Object.keys(folderMap).length} entries in folderMap`,
+    { sharedDriveId, folderCount: folders.length, folderMapSize: Object.keys(folderMap).length });
 
   return { folders, folderMap };
 }

@@ -18,20 +18,12 @@ function hasClientAccess(user: ReturnType<typeof getUserFromHeaders>, clientId: 
   return user.assignedClients?.includes(clientId) ?? false;
 }
 
-/** Default empty prospecting profile structure. */
+/**
+ * Default empty prospecting profile structure.
+ * ICP removed — now lives per-proposition (Slice 8 Patch).
+ */
 function emptyProfile() {
   return {
-    icp: {
-      industries: { managedListRefs: [], specifics: '' },
-      companySizing: [],
-      titles: { managedListRefs: [], specifics: '' },
-      seniority: { managedListRefs: [], specifics: '' },
-      buyingProcess: { type: '', notes: '' },
-      geographies: { managedListRefs: [], specifics: '' },
-      exclusions: [],
-      lastUpdatedBy: '',
-      lastUpdatedAt: '',
-    },
     marketMessaging: [],
     recommendations: [],
     aiReview: { lastReviewDate: null, status: 'not-requested', findings: [] },
@@ -71,19 +63,8 @@ export async function GET(
 
   const d = snap.data()!;
 
-  // Normalise timestamps
+  // Normalise timestamps — ICP excluded (now per-proposition)
   const profile = {
-    icp: {
-      industries: d.icp?.industries || { managedListRefs: [], specifics: '' },
-      companySizing: d.icp?.companySizing || [],
-      titles: d.icp?.titles || { managedListRefs: [], specifics: '' },
-      seniority: d.icp?.seniority || { managedListRefs: [], specifics: '' },
-      buyingProcess: d.icp?.buyingProcess || { type: '', notes: '' },
-      geographies: d.icp?.geographies || { managedListRefs: [], specifics: '' },
-      exclusions: d.icp?.exclusions || [],
-      lastUpdatedBy: d.icp?.lastUpdatedBy || '',
-      lastUpdatedAt: d.icp?.lastUpdatedAt?.toDate?.()?.toISOString() || d.icp?.lastUpdatedAt || '',
-    },
     marketMessaging: (d.marketMessaging || []).map((entry: Record<string, unknown>) => ({
       ...entry,
       createdAt: (entry.createdAt as { toDate?: () => Date })?.toDate?.()?.toISOString() || entry.createdAt || '',

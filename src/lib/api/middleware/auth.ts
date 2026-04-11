@@ -13,6 +13,7 @@ import { DEFAULT_TENANT_ID } from '../config';
 import type { ApiAuthContext } from '../types';
 import type { UserRole, AuthClaims } from '@/types';
 import { FieldValue } from 'firebase-admin/firestore';
+import { logger, SVC_AUTH } from '@/lib/logging';
 
 /**
  * Authenticate an API request. Checks for credentials in this order:
@@ -73,7 +74,7 @@ export async function authenticateRequest(
       const assignedClients = (decodedToken.assignedClients as string[]) || undefined;
       const permittedModules = (decodedToken.permittedModules as string[]) || undefined;
 
-      return {
+      const ctx: ApiAuthContext = {
         method: 'firebase',
         tenantId,
         role,
@@ -83,8 +84,16 @@ export async function authenticateRequest(
         permittedModules,
         permissions: derivePermissions(role),
       };
+      logger.debug(SVC_AUTH, 'bearerAuth', 'Firebase token verified', {
+        userId: decodedToken.uid, role, method: 'bearer',
+      });
+      return ctx;
     } catch {
       // Token invalid — don't fall through, this was an explicit Bearer token attempt
+      logger.error(SVC_AUTH, 'bearerAuthFailed', 'Invalid or expired Firebase ID token', {
+        method: 'bearer',
+        ip: request.headers.get('x-forwarded-for') || undefined,
+      });
       return {
         error: true,
         code: 'UNAUTHORIZED',
@@ -159,6 +168,9 @@ async function authenticateApiKey(
     .get();
 
   if (snapshot.empty) {
+    logger.error(SVC_AUTH, 'apiKeyAuthFailed', 'Invalid API key — no matching hash', {
+      method: 'apiKey', keyPrefix: rawKey.substring(0, 8) + '...',
+    });
     return {
       error: true,
       code: 'UNAUTHORIZED',
@@ -171,6 +183,9 @@ async function authenticateApiKey(
 
   // Check if revoked
   if (keyData.status === 'revoked') {
+    logger.error(SVC_AUTH, 'apiKeyRevoked', 'Attempt to use revoked API key', {
+      method: 'apiKey', keyId: keyDoc.id, keyName: keyData.name,
+    });
     return {
       error: true,
       code: 'API_KEY_REVOKED',
@@ -183,6 +198,9 @@ async function authenticateApiKey(
     // Ignore — failed lastUsedAt update should not affect the request
   });
 
+  logger.debug(SVC_AUTH, 'apiKeyAuth', 'API key verified', {
+    keyId: keyDoc.id, role: keyData.role, method: 'apiKey',
+  });
   return {
     method: 'apiKey',
     tenantId: keyData.tenantId || DEFAULT_TENANT_ID,

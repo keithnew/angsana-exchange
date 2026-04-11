@@ -13,9 +13,6 @@ export const DEFAULT_PAGE_LIMIT = 100;
 /** Maximum documents that can be returned per page */
 export const MAX_PAGE_LIMIT = 1000;
 
-/** Days before Firestore mutation audit logs are auto-deleted via TTL */
-export const AUDIT_LOG_TTL_DAYS = 90;
-
 /** Default tenant for API key resolution (single-tenant for now) */
 export const DEFAULT_TENANT_ID = 'angsana';
 

@@ -49,6 +49,8 @@ interface BrowseFile {
   uploadedBy: string;
   uploadedByName: string;
   uploadedAt: string;
+  campaignRefs: string[];
+  /** @deprecated Legacy single-ref kept for backward compat */
   campaignRef: string | null;
   propositionRefs?: string[];
   status: string;
@@ -234,7 +236,7 @@ function FileRow({
   propositions: Proposition[];
   folders: BrowseFolder[];
   onRename: (docId: string, newName: string) => Promise<void>;
-  onLinkCampaign: (docId: string, campaignId: string | null) => Promise<void>;
+  onLinkCampaign: (docId: string, campaignRefs: string[]) => Promise<void>;
   onLinkProposition: (docId: string, propositionRefs: string[]) => Promise<void>;
   onMove: (docId: string, targetFolderId: string) => Promise<void>;
   onDelete: (docId: string) => Promise<void>;
@@ -309,9 +311,8 @@ function FileRow({
     }
   }
 
-  const campaignName = file.campaignRef
-    ? campaigns.find((c) => c.id === file.campaignRef)?.campaignName
-    : null;
+  // Resolve campaign refs to display names
+  const fileRefs = file.campaignRefs || [];
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-gray-100 px-3 py-2.5 transition-colors hover:bg-gray-50/50">
@@ -355,11 +356,18 @@ function FileRow({
         </p>
       </div>
 
-      {/* Campaign pill */}
-      {campaignName ? (
-        <span className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#E1F5EE', color: '#085041' }}>
-          {campaignName}
-        </span>
+      {/* Campaign pills — multiple teal pills for multi-tag */}
+      {fileRefs.length > 0 ? (
+        <div className="flex shrink-0 gap-1 flex-wrap justify-end">
+          {fileRefs.map((cid) => {
+            const cName = campaigns.find((c) => c.id === cid)?.campaignName || cid;
+            return (
+              <span key={cid} className="rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#E1F5EE', color: '#085041' }}>
+                {cName}
+              </span>
+            );
+          })}
+        </div>
       ) : (
         <span className="shrink-0 text-[11px] italic text-gray-300">No campaign</span>
       )}
@@ -426,25 +434,35 @@ function FileRow({
 
                 {campaignMenuOpen && (
                   <div className="border-t border-gray-100 bg-gray-50 px-2 py-1 max-h-48 overflow-y-auto">
-                    {file.campaignRef && (
+                    {fileRefs.length > 0 && (
                       <button
-                        onClick={async () => { await onLinkCampaign(file.documentId, null); setCampaignMenuOpen(false); setMenuOpen(false); onRefresh(); }}
+                        onClick={async () => { await onLinkCampaign(file.documentId, []); setCampaignMenuOpen(false); setMenuOpen(false); onRefresh(); }}
                         className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-red-600 hover:bg-red-50"
                       >
-                        Remove link
+                        Remove all links
                       </button>
                     )}
                     {campaigns
                       .filter((c) => c.status !== 'completed')
-                      .map((c) => (
-                        <button
-                          key={c.id}
-                          onClick={async () => { await onLinkCampaign(file.documentId, c.id); setCampaignMenuOpen(false); setMenuOpen(false); onRefresh(); }}
-                          className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-white ${file.campaignRef === c.id ? 'font-medium text-[#3B7584]' : 'text-gray-600'}`}
-                        >
-                          {c.campaignName}
-                        </button>
-                      ))}
+                      .map((c) => {
+                        const isLinked = fileRefs.includes(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            onClick={async () => {
+                              const updated = isLinked
+                                ? fileRefs.filter((id) => id !== c.id)
+                                : [...fileRefs, c.id];
+                              await onLinkCampaign(file.documentId, updated);
+                              onRefresh();
+                            }}
+                            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-white ${isLinked ? 'font-medium text-[#3B7584]' : 'text-gray-600'}`}
+                          >
+                            <span className={`inline-block h-3 w-3 rounded border ${isLinked ? 'bg-[#3B7584] border-[#3B7584]' : 'border-gray-300'}`} />
+                            {c.campaignName}
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
 
@@ -726,11 +744,11 @@ export default function DocumentsClient({
     fetchDocuments();
   }
 
-  async function handleLinkCampaign(docId: string, campaignId: string | null) {
+  async function handleLinkCampaign(docId: string, campaignRefs: string[]) {
     const res = await fetch(`/api/clients/${clientId}/documents/${docId}/campaign`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaignRef: campaignId }),
+      body: JSON.stringify({ campaignRefs }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));

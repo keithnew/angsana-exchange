@@ -11,7 +11,7 @@ import {
   formatShortDate,
   getFolderDisplayName,
 } from '@/lib/documents/utils';
-import type { DocumentFolderItem } from '@/types';
+import type { DocumentFolderItem, Campaign } from '@/types';
 
 // =============================================================================
 // Types
@@ -25,6 +25,9 @@ interface BrowseFile {
   uploadedAt: string;
   folderCategory: string;
   visibility: string;
+  campaignRefs?: string[];
+  /** @deprecated Legacy field — use campaignRefs */
+  campaignRef?: string | null;
 }
 
 interface BrowseFolder {
@@ -38,6 +41,8 @@ interface CampaignDocumentsCardProps {
   clientId: string;
   campaignId: string;
   folderTemplate?: DocumentFolderItem[];
+  /** Optional campaigns list for resolving campaign names on multi-tag pills */
+  campaigns?: Pick<Campaign, 'id' | 'campaignName' | 'status'>[];
 }
 
 // =============================================================================
@@ -48,6 +53,7 @@ export default function CampaignDocumentsCard({
   clientId,
   campaignId,
   folderTemplate,
+  campaigns,
 }: CampaignDocumentsCardProps) {
   const { claims } = useAuth();
   const role = claims.role;
@@ -99,6 +105,15 @@ export default function CampaignDocumentsCard({
       a.download = file.name;
       a.click();
     }
+  }
+
+  /** Resolve campaign ID to name, falling back to truncated ID */
+  function getCampaignName(cid: string): string {
+    if (campaigns) {
+      const match = campaigns.find((c) => c.id === cid);
+      if (match) return match.campaignName;
+    }
+    return cid.slice(0, 8) + '…';
   }
 
   // ── Loading skeleton ────────────────────────────────────────────────────
@@ -181,18 +196,38 @@ export default function CampaignDocumentsCard({
                 )}
               </div>
               <div className="ml-4 space-y-1">
-                {folder.files.map((file) => (
-                  <div key={file.documentId} className="flex items-center gap-2 py-0.5">
-                    <FileText className="shrink-0" style={{ width: '14px', height: '14px', color: '#3B7584', strokeWidth: 1.5 }} />
-                    <button
-                      onClick={() => handleFileClick(file)}
-                      className="truncate text-sm text-[#0369A1] hover:underline cursor-pointer text-left"
-                    >
-                      {file.name}
-                    </button>
-                    <span className="shrink-0 text-xs text-gray-400">{formatShortDate(file.uploadedAt)}</span>
-                  </div>
-                ))}
+                {folder.files.map((file) => {
+                  // Show campaign pills for OTHER campaigns this file is also linked to
+                  const otherCampaigns = (file.campaignRefs || []).filter((cid) => cid !== campaignId);
+
+                  return (
+                    <div key={file.documentId} className="flex items-center gap-2 py-0.5">
+                      <FileText className="shrink-0" style={{ width: '14px', height: '14px', color: '#3B7584', strokeWidth: 1.5 }} />
+                      <button
+                        onClick={() => handleFileClick(file)}
+                        className="truncate text-sm text-[#0369A1] hover:underline cursor-pointer text-left"
+                      >
+                        {file.name}
+                      </button>
+                      <span className="shrink-0 text-xs text-gray-400">{formatShortDate(file.uploadedAt)}</span>
+                      {/* Multi-campaign pills — show other campaigns this file is also linked to */}
+                      {otherCampaigns.length > 0 && (
+                        <div className="flex shrink-0 gap-1">
+                          {otherCampaigns.map((cid) => (
+                            <span
+                              key={cid}
+                              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                              style={{ background: '#E1F5EE', color: '#085041' }}
+                              title={getCampaignName(cid)}
+                            >
+                              {getCampaignName(cid)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

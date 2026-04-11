@@ -12,7 +12,7 @@
 
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { AUDIT_LOG_TTL_DAYS } from '../config';
+import { getSettings } from '@/lib/settings';
 import type { ApiAuthContext } from '../types';
 
 interface AuditLogParams {
@@ -89,7 +89,9 @@ async function writeFirestoreAuditLog(
   params: AuditLogParams,
   callerId: string
 ): Promise<void> {
-  const ttlMs = AUDIT_LOG_TTL_DAYS * 24 * 60 * 60 * 1000;
+  const settings = await getSettings();
+  const ttlDays = settings.retention.apiLogs.value;
+  const ttlMs = ttlDays * 24 * 60 * 60 * 1000;
   const expiresAt = Timestamp.fromMillis(Date.now() + ttlMs);
 
   await adminDb

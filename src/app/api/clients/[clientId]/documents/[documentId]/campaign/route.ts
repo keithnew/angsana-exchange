@@ -1,10 +1,11 @@
 // =============================================================================
 // Angsana Exchange — Document Campaign Link API Route
-// Slice 7A Step 4, Step 15: Link/unlink a document to a campaign
+// Slice 7A Step 4, Step 15: Link/unlink a document to campaigns
+// Slice 8 Patch Change 7: campaignRef → campaignRefs (multi-tag support)
 //
 // PATCH /api/clients/{clientId}/documents/{documentId}/campaign
 //
-// Updates the campaignRef on a Firestore document registry entry.
+// Updates the campaignRefs on a Firestore document registry entry.
 // This is a Firestore-only mutation — no Drive API call needed since
 // campaign associations are purely a Firestore concern.
 //
@@ -14,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { getUserFromHeaders, hasClientAccess, isInternal } from '@/lib/api/middleware/user-context';
+import { buildCampaignRefsUpdate } from '@/lib/documents/campaignRefs';
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
@@ -21,7 +23,9 @@ import { getUserFromHeaders, hasClientAccess, isInternal } from '@/lib/api/middl
  * PATCH /api/clients/{clientId}/documents/{documentId}/campaign
  *
  * Request body (JSON):
- *   - campaignRef: string | null — campaign ID to link, or null to unlink
+ *   - campaignRefs: string[] — campaign IDs to link. Empty array clears all.
+ *
+ * Backward compat: also accepts legacy { campaignRef: string | null } body.
  *
  * Returns the updated document metadata.
  */
@@ -48,7 +52,7 @@ export async function PATCH(
   }
 
   // ── Parse request body ──────────────────────────────────────────────────
-  let body: { campaignRef?: string | null };
+  let body: { campaignRefs?: string[]; campaignRef?: string | null };
   try {
     body = await request.json();
   } catch {
@@ -58,20 +62,43 @@ export async function PATCH(
     );
   }
 
-  // campaignRef must be explicitly provided (can be string or null)
-  if (!('campaignRef' in body)) {
-    return NextResponse.json(
-      { error: 'Missing required field: campaignRef (use null to unlink)', code: 'MISSING_FIELD' },
-      { status: 400 }
-    );
-  }
+  // ── Normalise input: accept both new (campaignRefs) and legacy (campaignRef) ──
+  let campaignIds: string[];
 
-  const campaignRef = body.campaignRef;
-
-  // Validate campaignRef is string or null
-  if (campaignRef !== null && (typeof campaignRef !== 'string' || campaignRef.trim() === '')) {
+  if ('campaignRefs' in body) {
+    // New multi-tag format
+    if (!Array.isArray(body.campaignRefs)) {
+      return NextResponse.json(
+        { error: 'campaignRefs must be an array of campaign ID strings', code: 'INVALID_FIELD' },
+        { status: 400 }
+      );
+    }
+    // Validate each entry is a non-empty string
+    for (const ref of body.campaignRefs) {
+      if (typeof ref !== 'string' || ref.trim() === '') {
+        return NextResponse.json(
+          { error: 'Each entry in campaignRefs must be a non-empty string', code: 'INVALID_FIELD' },
+          { status: 400 }
+        );
+      }
+    }
+    campaignIds = body.campaignRefs;
+  } else if ('campaignRef' in body) {
+    // Legacy single-value format — convert to array
+    const legacyRef = body.campaignRef;
+    if (legacyRef === null || legacyRef === undefined) {
+      campaignIds = [];
+    } else if (typeof legacyRef === 'string' && legacyRef.trim() !== '') {
+      campaignIds = [legacyRef];
+    } else {
+      return NextResponse.json(
+        { error: 'campaignRef must be a non-empty string or null', code: 'INVALID_FIELD' },
+        { status: 400 }
+      );
+    }
+  } else {
     return NextResponse.json(
-      { error: 'campaignRef must be a non-empty string or null', code: 'INVALID_FIELD' },
+      { error: 'Missing required field: campaignRefs (use [] to unlink all)', code: 'MISSING_FIELD' },
       { status: 400 }
     );
   }
@@ -103,40 +130,45 @@ export async function PATCH(
     );
   }
 
-  const previousCampaignRef = docData.campaignRef || null;
+  // Previous refs for logging
+  const previousRefs: string[] = Array.isArray(docData.campaignRefs)
+    ? docData.campaignRefs
+    : docData.campaignRef
+      ? [docData.campaignRef]
+      : [];
 
-  // ── If campaign is being linked, validate it exists ─────────────────────
-  if (campaignRef) {
-    const campaignDoc = await adminDb
-      .collection('tenants')
-      .doc(user.tenantId)
-      .collection('clients')
-      .doc(clientId)
-      .collection('campaigns')
-      .doc(campaignRef)
-      .get();
+  // ── Validate each campaign ID exists ────────────────────────────────────
+  const campaignsRef = adminDb
+    .collection('tenants')
+    .doc(user.tenantId)
+    .collection('clients')
+    .doc(clientId)
+    .collection('campaigns');
 
+  for (const cid of campaignIds) {
+    const campaignDoc = await campaignsRef.doc(cid).get();
     if (!campaignDoc.exists) {
       return NextResponse.json(
-        { error: `Campaign "${campaignRef}" not found for this client`, code: 'CAMPAIGN_NOT_FOUND' },
+        { error: `Campaign "${cid}" not found for this client`, code: 'CAMPAIGN_NOT_FOUND' },
         { status: 404 }
       );
     }
   }
 
-  // ── Firestore update ────────────────────────────────────────────────────
+  // ── Firestore update (using helper for backward compat) ─────────────────
   const now = new Date().toISOString();
+  const refsPayload = buildCampaignRefsUpdate(campaignIds);
 
   try {
     await docRef.update({
-      campaignRef: campaignRef || null,
+      ...refsPayload,
       lastModifiedAt: now,
       lastModifiedBy: user.uid,
     });
 
     console.log(
-      `[documents/campaign] Document ${documentId} campaign link: ` +
-      `${previousCampaignRef || '(none)'} → ${campaignRef || '(none)'}`
+      `[documents/campaign] Document ${documentId} campaign links: ` +
+      `[${previousRefs.join(', ') || '(none)'}] → [${campaignIds.join(', ') || '(none)'}]`
     );
   } catch (err) {
     console.error('[documents/campaign] Firestore update failed:', err);
@@ -151,8 +183,10 @@ export async function PATCH(
     data: {
       documentId,
       name: docData.name,
-      previousCampaignRef,
-      campaignRef: campaignRef || null,
+      previousCampaignRefs: previousRefs,
+      campaignRefs: campaignIds,
+      // Legacy field for backward compat
+      campaignRef: campaignIds.length > 0 ? campaignIds[0] : null,
       lastModifiedAt: now,
       lastModifiedBy: user.uid,
     },

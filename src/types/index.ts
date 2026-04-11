@@ -269,7 +269,8 @@ export type ManagedListName =
   | 'therapyAreas'
   | 'documentFolders'
   | 'propositionCategories'
-  | 'messagingTypes';
+  | 'messagingTypes'
+  | 'buyingProcessTypes';
 
 /**
  * A single item within a managed list.
@@ -668,6 +669,11 @@ export const MANAGED_LIST_CONFIG: Record<
     description: 'Types for Market Messaging Library entries — e.g. Elevator Pitch, Case Study',
     hasOrientation: false,
   },
+  buyingProcessTypes: {
+    label: 'Buying Process Types',
+    description: 'How buying decisions are made — e.g. Single Decision-Maker, Committee',
+    hasOrientation: false,
+  },
 };
 
 // =============================================================================
@@ -741,8 +747,10 @@ export interface DocumentRegistryEntry {
   visibility: FolderVisibility;
   /** "active" or "deleted". */
   status: DocumentStatus;
-  /** Optional campaign ID. Settable at upload, editable later. */
-  campaignRef: string | null;
+  /** Optional campaign ID (legacy single). Use campaignRefs for new code. */
+  campaignRef?: string | null;
+  /** Campaign IDs. Default: []. Replaces campaignRef. */
+  campaignRefs?: string[];
   /** How this entry was created. */
   registrySource: DocumentRegistrySource;
   /** UID of the user who uploaded the file. */
@@ -790,7 +798,7 @@ export type FolderMap = Record<string, FolderMapEntry>;
 /**
  * Proposition status values.
  */
-export type PropositionStatus = 'active' | 'inactive';
+export type PropositionStatus = 'draft' | 'active' | 'inactive';
 
 /**
  * Proposition document from Firestore.
@@ -805,10 +813,14 @@ export interface Proposition {
   category: string;
   /** Additional context. Max 280 characters. */
   description: string;
-  /** active / inactive. Inactive propositions hidden from campaign pickers. */
+  /** draft / active / inactive. Draft = client-suggested. Inactive hidden from pickers. */
   status: PropositionStatus;
   /** Display ordering within the category group. Default: 0. */
   sortOrder: number;
+  /** ICP for this proposition. Same schema as original Slice 8 Section 3.2. Optional. */
+  icp?: ICP;
+  /** Free-text category suggestion from client-approver. Cleared on promotion. */
+  suggestedCategory?: string;
   /** UID of creator. */
   createdBy: string;
   /** Creation timestamp (ISO string). */
@@ -826,6 +838,7 @@ export const PROPOSITION_STATUS_CONFIG: Record<
   PropositionStatus,
   { label: string; colour: string; bgColour: string }
 > = {
+  draft: { label: 'Draft', colour: '#D97706', bgColour: '#FFFBEB' },
   active: { label: 'Active', colour: '#059669', bgColour: '#ECFDF5' },
   inactive: { label: 'Inactive', colour: '#6B7280', bgColour: '#F3F4F6' },
 };
@@ -884,8 +897,8 @@ export type BuyingProcessType =
  * Buying process object.
  */
 export interface ICPBuyingProcess {
-  /** Type of buying process. */
-  type: BuyingProcessType | '';
+  /** Buying process type — managed list reference (string). */
+  type: string;
   /** Free text notes. Max 500 chars. */
   notes: string;
 }
@@ -1042,8 +1055,6 @@ export interface AIReview {
  * Stored at tenants/{tenantId}/clients/{clientId}/prospectingProfile (single doc)
  */
 export interface ProspectingProfile {
-  /** Ideal Client Profile. */
-  icp: ICP;
   /** Market messaging library entries. */
   marketMessaging: MarketMessagingEntry[];
   /** Angsana recommendations (internal only). */

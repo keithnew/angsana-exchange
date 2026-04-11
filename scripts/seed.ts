@@ -194,6 +194,28 @@ async function seedFirestore() {
   }, { merge: true });
 
   // --- Managed Lists ---
+  // --- Settings (Infrastructure Slice: Logging & Config) ---
+  console.log('  Seeding settings/global...');
+  const settingsRef = tenantRef.collection('settings');
+  await settingsRef.doc('global').set({
+    logging: {
+      level: 'info',
+      enableConsole: true,
+      enableFirestore: true,
+      maxContextSize: 2000,
+      services: {},
+    },
+    retention: {
+      SystemLogs: { value: 14, unit: 'days' },
+      ErrorLogs: { value: 30, unit: 'days' },
+      UsageLogs: { value: 30, unit: 'days' },
+      apiLogs: { value: 90, unit: 'days' },
+    },
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ settings/global (logging + retention defaults)');
+
   console.log('  Seeding managed lists...');
   const managedListsRef = tenantRef.collection('managedLists');
 
@@ -349,6 +371,19 @@ async function seedFirestore() {
     updatedBy: 'seed-script',
   });
   console.log('    ✓ messagingTypes (6 items)');
+
+  // 8.3 buyingProcessTypes (Slice 8 Patch — 4 items)
+  await managedListsRef.doc('buyingProcessTypes').set({
+    items: [
+      { id: 'single-decision-maker', label: 'Single Decision Maker', active: true },
+      { id: 'committee', label: 'Committee', active: true },
+      { id: 'procurement-led', label: 'Procurement-Led', active: true },
+      { id: 'consensus', label: 'Consensus', active: true },
+    ],
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ buyingProcessTypes (4 items)');
 
   // --- Client: Cegid Spain (full, with campaigns) ---
   console.log('  Seeding client: cegid-spain...');
@@ -853,6 +888,33 @@ async function seedFirestore() {
         description: 'Enterprise resource planning for mid-market retailers and fashion brands.',
         status: 'active',
         sortOrder: 0,
+        icp: {
+          industries: {
+            managedListRefs: ['retail-consumer', 'manufacturing'],
+            specifics: 'Focus on fashion, luxury, and multi-brand retail.',
+          },
+          companySizing: [
+            { type: 'revenue', label: 'Annual Revenue', values: ['£50M–£500M', '£500M+'] },
+          ],
+          titles: {
+            managedListRefs: ['cfo-finance-director', 'cto-cio-cdo'],
+            specifics: '',
+          },
+          seniority: { managedListRefs: [], specifics: '' },
+          buyingProcess: {
+            managedListRefs: ['committee'],
+            notes: 'Typically IT + Finance + Operations stakeholders involved.',
+          },
+          geographies: {
+            managedListRefs: ['uk', 'iberia'],
+            specifics: 'UK-headquartered companies with European operations.',
+          },
+          exclusions: [
+            { category: 'company size', description: 'No companies under 200 employees.' },
+          ],
+          lastUpdatedBy: 'keith@angsana.com',
+          lastUpdatedAt: now.toDate().toISOString(),
+        },
         createdBy: 'keith@angsana.com',
         createdAt: now.toDate().toISOString(),
         lastUpdatedBy: 'keith@angsana.com',
@@ -867,6 +929,31 @@ async function seedFirestore() {
         description: 'Point of sale solutions for multi-site retail operations.',
         status: 'active',
         sortOrder: 1,
+        icp: {
+          industries: {
+            managedListRefs: ['retail-consumer'],
+            specifics: 'Multi-site physical retail with omnichannel ambitions.',
+          },
+          companySizing: [
+            { type: 'employees', label: 'Headcount', values: ['500–5000'] },
+          ],
+          titles: {
+            managedListRefs: ['cto-cio-cdo', 'vp-director-it', 'head-digital-transformation'],
+            specifics: '',
+          },
+          seniority: { managedListRefs: [], specifics: '' },
+          buyingProcess: {
+            managedListRefs: ['committee', 'procurement-led'],
+            notes: 'IT leads evaluation, procurement negotiates terms.',
+          },
+          geographies: {
+            managedListRefs: ['iberia'],
+            specifics: 'Spain and Portugal focus.',
+          },
+          exclusions: [],
+          lastUpdatedBy: 'keith@angsana.com',
+          lastUpdatedAt: now.toDate().toISOString(),
+        },
         createdBy: 'keith@angsana.com',
         createdAt: now.toDate().toISOString(),
         lastUpdatedBy: 'keith@angsana.com',
@@ -881,6 +968,7 @@ async function seedFirestore() {
         description: 'Cloud HR and payroll management for mid-market enterprises.',
         status: 'active',
         sortOrder: 2,
+        icp: null,  // No ICP yet — tests empty/null state
         createdBy: 'keith@angsana.com',
         createdAt: now.toDate().toISOString(),
         lastUpdatedBy: 'keith@angsana.com',
@@ -1097,10 +1185,11 @@ async function main() {
   console.log('Managed lists seeded:');
   console.log('  serviceTypes (7), sectors (10), geographies (12),');
   console.log('  titleBands (11), companySizes (4), therapyAreas (9),');
-  console.log('  documentFolders (9), propositionCategories (4), messagingTypes (6)');
+  console.log('  documentFolders (9), propositionCategories (4), messagingTypes (6),');
+  console.log('  buyingProcessTypes (4)');
   console.log('');
   console.log('Slice 8 data seeded:');
-  console.log('  Cegid Spain: 3 propositions, full prospecting profile');
+  console.log('  Cegid Spain: 3 propositions (2 with per-proposition ICP), full prospecting profile');
   console.log('  Wavix: 1 proposition, empty prospecting profile');
   console.log('');
   console.log('Test accounts (password: Exchange2026!):');

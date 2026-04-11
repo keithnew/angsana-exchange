@@ -487,6 +487,65 @@ The invitation email is triggered by `src/lib/firebase/send-password-reset.ts` w
 
 ---
 
+## Firestore TTL Policies
+
+Firestore Time-to-Live (TTL) policies automatically delete expired documents. Configure TTL on the `expiresAt` field for each logging collection. This is a **one-time** setup per collection group.
+
+### Commands
+
+```bash
+# SystemLogs — operational logs (default 14-day retention)
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=SystemLogs \
+  --project=angsana-exchange
+
+# ErrorLogs — error logs (default 30-day retention)
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=ErrorLogs \
+  --project=angsana-exchange
+
+# UsageLogs — usage/completion logs (default 30-day retention)
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=UsageLogs \
+  --project=angsana-exchange
+
+# apiLogs — existing API mutation audit trail (default 90-day retention)
+# Verify this is already configured from Slice 6A. If not:
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=apiLogs \
+  --project=angsana-exchange
+```
+
+### Verify TTL Policies
+
+```bash
+gcloud firestore fields ttls list --project=angsana-exchange
+```
+
+### How It Works
+
+- Each log document includes an `expiresAt` timestamp field set at write time
+- The TTL value (in days) is read from the Settings document at `tenants/angsana/settings/global`
+- Firestore's background garbage collector deletes documents whose `expiresAt` is in the past
+- Deletion is **not instant** — documents may persist for up to 24 hours past expiry
+- TTL retention days can be changed at runtime via the Settings document without redeploy
+
+### Settings Document
+
+The Settings document at `tenants/angsana/settings/global` controls retention periods:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `retention.systemLogs` | 14 days | SystemLogs TTL |
+| `retention.errorLogs` | 30 days | ErrorLogs TTL |
+| `retention.usageLogs` | 30 days | UsageLogs TTL |
+| `retention.apiLogs` | 90 days | apiLogs (mutation audit) TTL |
+| `logging.level` | `info` | Minimum log level: debug, info, warn, error |
+
+Edit directly in Firestore Console. Changes take effect on next request (or after `refreshSettings()` call).
+
+---
+
 ## What's Not Included (Future)
 
 | Item | Status | Notes |

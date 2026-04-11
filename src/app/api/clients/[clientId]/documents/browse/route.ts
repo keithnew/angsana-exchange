@@ -29,6 +29,7 @@ import { listFolderContents, isFolderWithinRoot } from '@/lib/drive/browse';
 import { getUserFromHeaders, hasClientAccess, isInternal } from '@/lib/api/middleware/user-context';
 import { getClientVisibleCategories } from '@/lib/drive/visibility';
 import { getDocumentFolderTemplate } from '@/lib/drive/folder-template-loader';
+import { getCampaignRefs } from '@/lib/documents/campaignRefs';
 import type { FolderMap, DocumentFolderItem } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ interface BrowseRegistryItem {
   uploadedBy: string;
   uploadedByName: string;
   uploadedAt: string;
+  campaignRefs: string[];
+  /** @deprecated Legacy single-ref kept for backward compat */
   campaignRef: string | null;
   status: string;
 }
@@ -244,9 +247,9 @@ export async function GET(
       .where('status', '==', 'active')
       .where('folderCategory', 'in', targetCategories.length > 0 ? targetCategories : ['__none__']);
 
-    // Apply campaign filter if provided
+    // Apply campaign filter if provided (array-contains for multi-tag support)
     if (campaignFilter) {
-      query = query.where('campaignRef', '==', campaignFilter);
+      query = query.where('campaignRefs', 'array-contains', campaignFilter);
     }
 
     const snapshot = await query
@@ -284,6 +287,7 @@ export async function GET(
       const category = data.folderCategory as string;
       const group = groups.get(category);
       if (group) {
+        const refs = getCampaignRefs(data as { campaignRefs?: string[]; campaignRef?: string });
         group.files.push({
           documentId: doc.id,
           driveFileId: data.driveFileId,
@@ -295,7 +299,8 @@ export async function GET(
           uploadedBy: data.uploadedBy,
           uploadedByName: data.uploadedByName || data.uploadedBy || '',
           uploadedAt: data.uploadedAt,
-          campaignRef: data.campaignRef || null,
+          campaignRefs: refs,
+          campaignRef: refs.length > 0 ? refs[0] : null,
           status: data.status,
         });
       }
