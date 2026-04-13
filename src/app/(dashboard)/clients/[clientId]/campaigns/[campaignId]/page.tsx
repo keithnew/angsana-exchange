@@ -50,6 +50,7 @@ export default async function CampaignDetailPage({
     serviceTypeId: data.serviceTypeId || '',
     owner: data.owner || '',
     startDate: data.startDate?.toDate?.()?.toISOString() || '',
+    propositionRefs: data.propositionRefs || [],
     campaignSummary: data.campaignSummary || '',
     targetGeographies: data.targetGeographies || [],
     targetSectors: data.targetSectors || [],

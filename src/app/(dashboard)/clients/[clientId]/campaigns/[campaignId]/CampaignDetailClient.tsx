@@ -11,6 +11,9 @@ import {
   RotateCcw,
   Clock,
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,6 +114,179 @@ function PlaceholderSection({ title }: { title: string }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// =============================================================================
+// Proposition Expandable Card — click to expand/collapse ICP details
+// =============================================================================
+
+function PropositionExpandableCard({
+  prop,
+  clientId,
+  managedLists,
+}: {
+  prop: Proposition;
+  clientId: string;
+  managedLists: Record<string, ManagedListItem[]>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const icpStatusColor = prop.icpStatus === 'active' ? '#22c55e' : prop.icpStatus === 'draft' ? '#f59e0b' : '#9ca3af';
+  const icpStatusLabel = prop.icpStatus === 'active' ? 'Active ICP' : prop.icpStatus === 'draft' ? 'Draft ICP' : 'No ICP';
+
+  // Build ICP summary chips for collapsed view
+  const icpSummaryParts: string[] = [];
+  const icp = prop.icp;
+  if (icp) {
+    const indRefs = icp.industries?.managedListRefs || [];
+    if (indRefs.length) {
+      const labels = indRefs.slice(0, 2).map((id: string) => lookupLabel(managedLists.sectors || [], id));
+      icpSummaryParts.push(labels.join(', ') + (indRefs.length > 2 ? ` +${indRefs.length - 2}` : ''));
+    }
+    const titleRefs = icp.titles?.managedListRefs || [];
+    if (titleRefs.length) {
+      const labels = titleRefs.slice(0, 2).map((id: string) => lookupLabel(managedLists.titleBands || [], id));
+      icpSummaryParts.push(labels.join(', ') + (titleRefs.length > 2 ? ` +${titleRefs.length - 2}` : ''));
+    }
+    const geoRefs = icp.geographies?.managedListRefs || [];
+    if (geoRefs.length) {
+      const labels = geoRefs.slice(0, 2).map((id: string) => lookupLabel(managedLists.geographies || [], id));
+      icpSummaryParts.push(labels.join(', ') + (geoRefs.length > 2 ? ` +${geoRefs.length - 2}` : ''));
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      {/* Clickable header — always visible */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: icpStatusColor }}
+              title={icpStatusLabel}
+            />
+            <span className="text-sm font-semibold text-gray-900 truncate">{prop.name}</span>
+            {prop.category && (
+              <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide shrink-0">
+                {prop.category}
+              </span>
+            )}
+            <span
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0"
+              style={{
+                backgroundColor: prop.status === 'active' ? '#ecfdf5' : '#f3f4f6',
+                color: prop.status === 'active' ? '#059669' : '#6b7280',
+              }}
+            >
+              {prop.status === 'active' ? 'Active' : 'Draft'}
+            </span>
+          </div>
+          {prop.description && (
+            <p className="mt-0.5 text-xs text-gray-500 truncate">{prop.description}</p>
+          )}
+          {!expanded && icpSummaryParts.length > 0 && (
+            <p className="mt-1 text-xs text-gray-400">{icpSummaryParts.join(' · ')}</p>
+          )}
+          {!expanded && !icp && (
+            <p className="mt-1 text-xs text-gray-400 italic">No ICP defined</p>
+          )}
+        </div>
+        <div className="ml-3 shrink-0 text-gray-400">
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </div>
+      </button>
+
+      {/* Expandable ICP details */}
+      {expanded && (
+        <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3 bg-gray-50/50">
+          {icp ? (
+            <>
+              {/* Industries */}
+              {(icp.industries?.managedListRefs?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Industries</p>
+                  <div className="flex flex-wrap gap-1">
+                    {icp.industries.managedListRefs.map((id: string) => (
+                      <span key={id} className="inline-flex items-center rounded-full bg-white border border-gray-200 px-2 py-0.5 text-xs text-gray-700">
+                        {lookupLabel(managedLists.sectors || [], id)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Target Titles */}
+              {(icp.titles?.managedListRefs?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Target Titles</p>
+                  <div className="flex flex-wrap gap-1">
+                    {icp.titles.managedListRefs.map((id: string) => (
+                      <span key={id} className="inline-flex items-center rounded-full bg-white border border-gray-200 px-2 py-0.5 text-xs text-gray-700">
+                        {lookupLabel(managedLists.titleBands || [], id)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Geographies */}
+              {(icp.geographies?.managedListRefs?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Geographies</p>
+                  <div className="flex flex-wrap gap-1">
+                    {icp.geographies.managedListRefs.map((id: string) => (
+                      <span key={id} className="inline-flex items-center rounded-full bg-white border border-gray-200 px-2 py-0.5 text-xs text-gray-700">
+                        {lookupLabel(managedLists.geographies || [], id)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Company Sizing */}
+              {(icp.companySizing?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Company Size</p>
+                  <div className="flex flex-wrap gap-1">
+                    {icp.companySizing.map((entry, i) => (
+                      <span key={i} className="inline-flex items-center rounded-full bg-white border border-gray-200 px-2 py-0.5 text-xs text-gray-700">
+                        {entry.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Buying Process */}
+              {(icp.buyingProcess?.type || icp.buyingProcess?.notes) && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Buying Process</p>
+                  <p className="text-xs text-gray-600">
+                    {icp.buyingProcess.type && <span className="font-medium">{icp.buyingProcess.type}</span>}
+                    {icp.buyingProcess.type && icp.buyingProcess.notes && ' — '}
+                    {icp.buyingProcess.notes}
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 italic">No ICP data defined for this proposition</p>
+          )}
+          {/* Link to Prospecting Profile */}
+          <div className="pt-2 border-t border-gray-100">
+            <Link
+              href={`/clients/${clientId}/prospecting-profile`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--primary)] hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              View in Prospecting Profile
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -515,40 +691,6 @@ export function CampaignDetailClient({
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Propositions
-              </p>
-              <div className="mt-1">
-                {(campaign.propositionRefs || []).length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {campaign.propositionRefs!.map((propId) => {
-                      const prop = propositions.find((p) => p.id === propId);
-                      return (
-                        <Link
-                          key={propId}
-                          href={`/clients/${clientId}/prospecting-profile`}
-                          className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium hover:opacity-80 transition-opacity cursor-pointer"
-                          style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E', borderColor: '#D4C4D4' }}
-                          title={`View ${prop?.name || 'proposition'} in Prospecting Profile`}
-                        >
-                          {prop?.name || propId}
-                          {prop?.icpStatus && (
-                            <span
-                              className="ml-1.5 inline-block h-2 w-2 rounded-full"
-                              style={{ backgroundColor: prop.icpStatus === 'active' ? '#22c55e' : prop.icpStatus === 'draft' ? '#f59e0b' : '#9ca3af' }}
-                              title={`ICP: ${prop.icpStatus}`}
-                            />
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm italic text-[var(--muted)]">No propositions linked</p>
-                )}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
                 Owner
               </p>
               <p className="mt-1 text-sm text-[var(--foreground)]">{campaign.owner}</p>
@@ -583,6 +725,39 @@ export function CampaignDetailClient({
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Linked Propositions Section — expandable ICP details */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Linked Propositions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(campaign.propositionRefs || []).length > 0 ? (
+            <div className="space-y-3">
+              {campaign.propositionRefs!.map((propId) => {
+                const prop = propositions.find((p) => p.id === propId);
+                if (!prop) return (
+                  <div key={propId} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-sm text-[var(--muted)] italic">Proposition not found ({propId})</p>
+                  </div>
+                );
+                return <PropositionExpandableCard key={propId} prop={prop} clientId={clientId} managedLists={managedLists} />;
+              })}
+            </div>
+          ) : (
+            <p className="text-sm italic text-[var(--muted)]">
+              No propositions linked —{' '}
+              {canEdit ? (
+                <Link href={`/clients/${clientId}/campaigns/${campaign.id}/edit`} className="text-[var(--primary)] hover:underline">
+                  link one via Edit
+                </Link>
+              ) : (
+                <span>link one via the campaign edit form</span>
+              )}
+            </p>
+          )}
         </CardContent>
       </Card>
 
