@@ -503,7 +503,7 @@ export function CampaignForm({
   return (
     <>
       {/* Sub-header — full width, outside max-w constraint */}
-      <div className="sticky top-0 z-10 bg-gray-50 -mx-6 px-6 pb-3 pt-4 border-b border-gray-200 mb-6">
+      <div className="sticky top-0 z-10 bg-gray-50 -mx-6 -mt-6 px-6 pb-3 pt-4 border-b border-gray-200 mb-6">
         <Link
           href={cancelHref}
           className="mb-1 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"

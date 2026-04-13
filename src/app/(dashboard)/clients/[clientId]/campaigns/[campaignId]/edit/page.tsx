@@ -59,6 +59,7 @@ export default async function CampaignEditPage({
     owner: data.owner || '',
     startDate: data.startDate?.toDate?.()?.toISOString() || '',
     campaignSummary: data.campaignSummary || '',
+    propositionRefs: data.propositionRefs || [],
     targetGeographies: data.targetGeographies || [],
     targetSectors: data.targetSectors || [],
     targetTitles: data.targetTitles || [],

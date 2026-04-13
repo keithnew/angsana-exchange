@@ -243,14 +243,41 @@ export async function GET(
 
     // When campaign filter is active, we use a simpler query to avoid needing
     // a composite index for folderCategory(in) + campaignRefs(array-contains).
-    // We query by campaignRefs + status only, then filter by folderCategory in JS.
+    // We query both the new campaignRefs (array) field AND the legacy
+    // campaignRef (string) field, then merge and deduplicate results.
     let snapshot;
     if (campaignFilter) {
-      const campaignQuery = documentsRef
+      // Query 1: new array field
+      const arrayQuery = documentsRef
         .where('campaignRefs', 'array-contains', campaignFilter)
         .where('status', '==', 'active')
         .orderBy('uploadedAt', 'desc');
-      snapshot = await campaignQuery.get();
+      // Query 2: legacy string field
+      const stringQuery = documentsRef
+        .where('campaignRef', '==', campaignFilter)
+        .where('status', '==', 'active')
+        .orderBy('uploadedAt', 'desc');
+
+      const [arraySnap, stringSnap] = await Promise.all([
+        arrayQuery.get(),
+        stringQuery.get(),
+      ]);
+
+      // Merge and deduplicate by document ID
+      const seenIds = new Set<string>();
+      const mergedDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+      for (const doc of arraySnap.docs) {
+        seenIds.add(doc.id);
+        mergedDocs.push(doc);
+      }
+      for (const doc of stringSnap.docs) {
+        if (!seenIds.has(doc.id)) {
+          mergedDocs.push(doc);
+        }
+      }
+
+      // Create a lightweight snapshot-like object
+      snapshot = { docs: mergedDocs };
     } else {
       // No campaign filter — use folderCategory `in` query as before
       const categoryQuery = documentsRef
