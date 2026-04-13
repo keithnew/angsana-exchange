@@ -644,12 +644,12 @@ export function ProspectingProfileClient({
                             )}
                             {linkedCampaigns.length > 0 && (
                               <button type="button"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#E1F5EE] text-[#085041] hover:bg-[#C9EDE0] transition-colors ml-auto"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#E1F5EE] text-[#085041] hover:bg-[#C9EDE0] transition-colors shrink-0 ml-auto"
                                 onClick={() => setExpandedPropIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}>
                                 <Link2 className="h-3 w-3" /> {linkedCampaigns.length} campaign{linkedCampaigns.length > 1 ? 's' : ''}
                               </button>
                             )}
-                            <button type="button" className="ml-auto text-gray-400 hover:text-gray-600 p-0.5"
+                            <button type="button" className={`${linkedCampaigns.length === 0 ? 'ml-auto' : ''} shrink-0 text-gray-400 hover:text-gray-600 p-0.5`}
                               onClick={() => setExpandedPropIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}>
                               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                             </button>
