@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, Plus, Edit2, X, Check, ExternalLink, FileTex
 import type {
   Proposition, ProspectingProfile, ManagedListItem, UserRole, Campaign,
   PropositionStatus, ICP, MarketMessagingEntry, Recommendation,
-  RecommendationStatus, CompanySizingEntry, ICPExclusion, BuyingProcessType,
+  RecommendationStatus, CompanySizingEntry, BuyingProcessType,
 } from '@/types';
 import {
   PROPOSITION_STATUS_CONFIG, RECOMMENDATION_STATUS_CONFIG, BUYING_PROCESS_CONFIG,
@@ -127,7 +127,7 @@ function TagPill({ label, onRemove, variant = 'default' }: { label: string; onRe
 // ═════════════════════════════════════════════════════════════════════════════
 export function ProspectingProfileClient({
   clientId, clientName, propositions: initialPropositions, profile: initialProfile,
-  managedLists, userRole, userUid, userEmail: _userEmail, userMap = {}, campaigns = [],
+  managedLists, userRole, userUid, userMap = {}, campaigns = [],
 }: Props) {
   const router = useRouter();
   const [propositions, setPropositions] = useState(initialPropositions);
