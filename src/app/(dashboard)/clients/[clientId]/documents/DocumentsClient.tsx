@@ -726,7 +726,7 @@ export default function DocumentsClient({
     fetch(`/api/clients/${clientId}/propositions?status=active`)
       .then((r) => r.json())
       .then((json) => {
-        if (json.success && json.data) setPropositions(json.data);
+        if (json.propositions) setPropositions(json.propositions);
       })
       .catch(() => {}); // silent
   }, [clientId]);

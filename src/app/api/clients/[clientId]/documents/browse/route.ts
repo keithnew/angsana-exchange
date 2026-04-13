@@ -313,10 +313,26 @@ export async function GET(
     }
 
     // Populate files into their category groups
+    // When campaign filter is active, files may have categories not in targetCategories.
+    // Dynamically create groups for any category found in campaign-filtered results.
     for (const doc of snapshot.docs) {
       const data = doc.data();
       const category = data.folderCategory as string;
-      const group = groups.get(category);
+      let group = groups.get(category);
+      if (!group && campaignFilter) {
+        // Dynamically create a group for this category (campaign filter mode)
+        const templateItem = folderTemplate.find((f) => f.folderCategory === category);
+        if (templateItem) {
+          group = {
+            folderCategory: category,
+            folderName: templateItem.name,
+            folderId: categoryToFolderId.get(category) || null,
+            visibility: templateItem.visibility,
+            files: [],
+          };
+          groups.set(category, group);
+        }
+      }
       if (group) {
         const refs = getCampaignRefs(data as { campaignRefs?: string[]; campaignRef?: string });
         group.files.push({
