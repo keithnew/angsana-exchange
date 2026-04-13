@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -122,6 +122,120 @@ function MultiSelectChips({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Proposition Pill — expandable to show ICP details inline
+// =============================================================================
+
+function PropositionPill({
+  proposition,
+  onRemove,
+  clientId,
+}: {
+  proposition: Proposition;
+  onRemove: () => void;
+  clientId: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const icp = proposition.icp;
+  const hasIcp = icp && (
+    (icp.industries?.managedListRefs?.length || 0) > 0 ||
+    (icp.titles?.managedListRefs?.length || 0) > 0 ||
+    (icp.geographies?.managedListRefs?.length || 0) > 0 ||
+    icp.buyingProcess
+  );
+  const icpStatus = proposition.icpStatus || 'draft';
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[var(--muted)] shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--muted)] shrink-0" />}
+          <span className="text-sm font-medium text-[var(--foreground)] truncate">{proposition.name}</span>
+          {proposition.category && (
+            <span className="text-[10px] text-[var(--muted)] uppercase tracking-wide shrink-0">{proposition.category}</span>
+          )}
+          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${
+            icpStatus === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            ICP: {icpStatus}
+          </span>
+        </button>
+        <Link
+          href={`/clients/${clientId}/prospecting-profile`}
+          className="text-[var(--muted)] hover:text-[var(--accent-cyan)] shrink-0"
+          title="View in Prospecting Profile"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-[var(--muted)] hover:text-red-600 shrink-0"
+          title="Remove proposition"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Expanded ICP detail */}
+      {expanded && (
+        <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 space-y-2">
+          {proposition.description && (
+            <p className="text-xs text-[var(--muted)]">{proposition.description}</p>
+          )}
+          {hasIcp ? (
+            <>
+              {(icp.industries?.managedListRefs?.length || 0) > 0 && (
+                <div>
+                  <span className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-wide">Industries</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {(((icp.industries as unknown as Record<string, string[]>)?.labels) || icp.industries!.managedListRefs!).map((l: string) => (
+                      <span key={l} className="rounded-full bg-white border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700">{l}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(icp.titles?.managedListRefs?.length || 0) > 0 && (
+                <div>
+                  <span className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-wide">Target Titles</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {(((icp.titles as unknown as Record<string, string[]>)?.labels) || icp.titles!.managedListRefs!).map((l: string) => (
+                      <span key={l} className="rounded-full bg-white border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700">{l}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(icp.geographies?.managedListRefs?.length || 0) > 0 && (
+                <div>
+                  <span className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-wide">Geographies</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {(((icp.geographies as unknown as Record<string, string[]>)?.labels) || icp.geographies!.managedListRefs!).map((l: string) => (
+                      <span key={l} className="rounded-full bg-white border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700">{l}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {icp.buyingProcess?.type && (
+                <div>
+                  <span className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-wide">Buying Process</span>
+                  <p className="text-xs text-gray-700 mt-0.5">{String(icp.buyingProcess.type)}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-[var(--muted)] italic">No ICP details defined yet.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -272,7 +386,7 @@ export function CampaignForm({
   useEffect(() => {
     async function fetchPropositions() {
       try {
-        const res = await fetch(`/api/clients/${clientId}/propositions?status=active`);
+        const res = await fetch(`/api/clients/${clientId}/propositions`);
         if (res.ok) {
           const data = await res.json();
           setPropositions(data.propositions || []);
@@ -360,22 +474,24 @@ export function CampaignForm({
 
   return (
     <div className="max-w-3xl">
-      {/* Back link */}
-      <Link
-        href={
-          mode === 'edit'
-            ? `/clients/${clientId}/campaigns/${initialData!.id}`
-            : `/clients/${clientId}/campaigns`
-        }
-        className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {mode === 'edit' ? 'Back to campaign' : `Back to ${clientName} campaigns`}
-      </Link>
+      {/* Sticky sub-header */}
+      <div className="sticky top-0 z-10 bg-gray-50 pb-4 -mx-6 px-6 -mt-6 pt-6 border-b border-gray-200 mb-6">
+        <Link
+          href={
+            mode === 'edit'
+              ? `/clients/${clientId}/campaigns/${initialData!.id}`
+              : `/clients/${clientId}/campaigns`
+          }
+          className="mb-2 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {mode === 'edit' ? 'Back to campaign' : `Back to ${clientName} campaigns`}
+        </Link>
 
-      <h1 className="mb-6 text-2xl font-bold text-[var(--foreground)]">
-        {mode === 'create' ? 'New Campaign' : `Edit: ${initialData!.campaignName}`}
-      </h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">
+          {mode === 'create' ? 'New Campaign' : `Edit: ${initialData!.campaignName}`}
+        </h1>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -447,64 +563,70 @@ export function CampaignForm({
             </div>
 
             {/* Propositions */}
-            {propositions.length > 0 && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
-                  Propositions
-                </label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {propositionRefs.map((propId) => {
-                    const prop = propositions.find((p) => p.id === propId);
-                    return prop ? (
-                      <span
-                        key={propId}
-                        className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium"
-                        style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E', borderColor: '#D4C4D4' }}
-                      >
-                        {prop.name}
-                        <button
-                          type="button"
-                          onClick={() => setPropositionRefs(propositionRefs.filter((id) => id !== propId))}
-                          className="ml-0.5 hover:opacity-70"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ) : null;
-                  })}
-                </div>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value && !propositionRefs.includes(e.target.value)) {
-                      setPropositionRefs([...propositionRefs, e.target.value]);
-                    }
-                    e.target.value = '';
-                  }}
-                  className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
-                >
-                  <option value="">Add a proposition...</option>
-                  {/* Group by category */}
-                  {Array.from(new Set(propositions.map((p) => p.category))).map((cat) => (
-                    <optgroup key={cat} label={cat || 'Uncategorised'}>
-                      {propositions
-                        .filter((p) => p.category === cat && !propositionRefs.includes(p.id))
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  Which of the client&apos;s propositions is this campaign prospecting for? Most campaigns target 1–2 propositions.
-                </p>
-                {propositionRefs.length >= 4 && (
-                  <p className="mt-1 text-xs text-amber-600">
-                    ⚠ Campaigns typically focus on 1–2 propositions. A campaign targeting many propositions may need to be split.
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Linked Propositions
+              </label>
+              {propositions.length === 0 ? (
+                <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-3">
+                  <p className="text-sm text-[var(--muted)]">
+                    No propositions defined for this client.{' '}
+                    <Link href={`/clients/${clientId}/prospecting-profile`} className="text-[var(--accent-cyan)] hover:underline">
+                      Set up Prospecting Profile →
+                    </Link>
                   </p>
-                )}
-              </div>
-            )}
+                </div>
+              ) : (
+                <>
+                  {/* Selected proposition pills with expandable ICP detail */}
+                  {propositionRefs.length > 0 && (
+                    <div className="space-y-2 mb-2">
+                      {propositionRefs.map((propId) => {
+                        const prop = propositions.find((p) => p.id === propId);
+                        if (!prop) return null;
+                        return (
+                          <PropositionPill
+                            key={propId}
+                            proposition={prop}
+                            onRemove={() => setPropositionRefs(propositionRefs.filter((id) => id !== propId))}
+                            clientId={clientId}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value && !propositionRefs.includes(e.target.value)) {
+                        setPropositionRefs([...propositionRefs, e.target.value]);
+                      }
+                      e.target.value = '';
+                    }}
+                    className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
+                  >
+                    <option value="">Add a proposition...</option>
+                    {Array.from(new Set(propositions.map((p) => p.category))).map((cat) => (
+                      <optgroup key={cat} label={cat || 'Uncategorised'}>
+                        {propositions
+                          .filter((p) => p.category === cat && !propositionRefs.includes(p.id))
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </>
+              )}
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Select from this client&apos;s Prospecting Profile propositions. Click a selected proposition to see its ICP details.
+              </p>
+              {propositionRefs.length >= 4 && (
+                <p className="mt-1 text-xs text-amber-600">
+                  ⚠ Campaigns typically focus on 1–2 propositions. A campaign targeting many propositions may need to be split.
+                </p>
+              )}
+            </div>
 
             {/* Owner */}
             <div>
@@ -674,13 +796,13 @@ export function CampaignForm({
           <CardContent className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
-                Value Proposition <span className="text-[var(--muted)] font-normal">(optional)</span>
+                Elevator Pitch <span className="text-[var(--muted)] font-normal">(optional)</span>
               </label>
               <Input
                 value={valueProposition}
                 onChange={(e) => setValueProposition(e.target.value)}
                 maxLength={200}
-                placeholder="Core value proposition..."
+                placeholder="One-line pitch for this campaign..."
               />
               <p className="mt-1 text-xs text-[var(--muted)]">
                 {200 - valueProposition.length} characters remaining
