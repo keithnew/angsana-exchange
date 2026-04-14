@@ -502,9 +502,7 @@ export function CampaignForm({
 
   return (
     <>
-      {/* Full-bleed wrapper — negates main's p-6 so sub-header sits outside the padded area */}
-      <div className="-m-6">
-      {/* Sub-header — naturally at top, full width, pure CSS sticky with no negative-margin hacks */}
+      {/* Sub-header — sticky, pins flush with header since main has no padding */}
       <div className="sticky top-0 z-30 bg-white px-6 pb-3 pt-4 border-b border-gray-200">
         <Link
           href={cancelHref}
@@ -519,7 +517,7 @@ export function CampaignForm({
         </h1>
       </div>
 
-      {/* Content area — restore padding that -m-6 wrapper negated */}
+      {/* Content area */}
       <div className="p-6">
       <div className="max-w-3xl">
         {error && (
@@ -996,8 +994,7 @@ export function CampaignForm({
           <ActionButtons />
         </form>
       </div>
-      </div>{/* end p-6 */}
-      </div>{/* end -m-6 */}
+      </div>
     </>
   );
 }

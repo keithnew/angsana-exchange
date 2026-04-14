@@ -3,6 +3,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { notFound, redirect } from 'next/navigation';
 import SoWhatForm from '../../SoWhatForm';
 import type { SoWhat } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 interface Props {
   params: Promise<{ clientId: string; soWhatId: string }>;
@@ -67,6 +68,7 @@ export default async function EditSoWhatPage({ params }: Props) {
   );
 
   return (
+    <PagePadding>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Edit So What</h1>
@@ -75,5 +77,6 @@ export default async function EditSoWhatPage({ params }: Props) {
 
       <SoWhatForm clientId={clientId} titleBands={titleBands} soWhat={soWhat} mode="edit" />
     </div>
+      </PagePadding>
   );
 }

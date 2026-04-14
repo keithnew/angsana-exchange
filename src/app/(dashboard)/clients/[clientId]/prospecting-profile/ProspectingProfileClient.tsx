@@ -11,6 +11,7 @@ import type {
 import {
   PROPOSITION_STATUS_CONFIG, RECOMMENDATION_STATUS_CONFIG, BUYING_PROCESS_CONFIG,
 } from '@/types';
+import PropositionDocumentsCard from '@/components/documents/PropositionDocumentsCard';
 
 // ─── Lightweight campaign type (only what we need from server) ────────────
 type CampaignSummary = Pick<Campaign, 'id' | 'campaignName' | 'status' | 'propositionRefs'>;
@@ -800,6 +801,15 @@ export function ProspectingProfileClient({
                                   className="flex items-center gap-1.5 text-sm font-medium text-[#004156] hover:text-[#003040] mt-2">
                                   <Plus className="h-4 w-4" /> Create Campaign
                                 </a>
+                              </div>
+
+                              {/* Documents Section */}
+                              <div className="border-t border-gray-100 pt-3">
+                                <PropositionDocumentsCard
+                                  clientId={clientId}
+                                  propositionId={p.id}
+                                  campaigns={campaigns}
+                                />
                               </div>
                             </div>
                           )}

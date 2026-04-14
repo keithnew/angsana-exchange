@@ -49,6 +49,7 @@ interface BrowseRegistryItem {
   campaignRefs: string[];
   /** @deprecated Legacy single-ref kept for backward compat */
   campaignRef: string | null;
+  propositionRefs: string[];
   status: string;
 }
 
@@ -95,6 +96,7 @@ export async function GET(
   const source = searchParams.get('source');
   const filterCategory = searchParams.get('folderCategory');
   const campaignFilter = searchParams.get('campaign');
+  const propositionFilter = searchParams.get('proposition');
   const includeUnregisteredCheck = searchParams.get('includeUnregisteredCheck') === 'true';
 
   // ── Read client config ──────────────────────────────────────────────────
@@ -278,6 +280,15 @@ export async function GET(
 
       // Create a lightweight snapshot-like object
       snapshot = { docs: mergedDocs };
+    } else if (propositionFilter) {
+      // Proposition filter — same pattern as campaign filter
+      // Uses the propositionRefs composite index
+      const propQuery = documentsRef
+        .where('propositionRefs', 'array-contains', propositionFilter)
+        .where('status', '==', 'active')
+        .orderBy('uploadedAt', 'desc');
+
+      snapshot = await propQuery.get();
     } else {
       // No campaign filter — use folderCategory `in` query as before
       const categoryQuery = documentsRef
@@ -319,8 +330,8 @@ export async function GET(
       const data = doc.data();
       const category = data.folderCategory as string;
       let group = groups.get(category);
-      if (!group && campaignFilter) {
-        // Dynamically create a group for this category (campaign filter mode)
+      if (!group && (campaignFilter || propositionFilter)) {
+        // Dynamically create a group for this category (campaign/proposition filter mode)
         const templateItem = folderTemplate.find((f) => f.folderCategory === category);
         if (templateItem) {
           group = {
@@ -348,6 +359,7 @@ export async function GET(
           uploadedAt: data.uploadedAt,
           campaignRefs: refs,
           campaignRef: refs.length > 0 ? refs[0] : null,
+          propositionRefs: Array.isArray(data.propositionRefs) ? data.propositionRefs : [],
           status: data.status,
         });
       }

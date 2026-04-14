@@ -2,6 +2,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CheckInForm } from '../CheckInForm';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * New Check-in Page — /clients/[clientId]/checkins/new
@@ -57,10 +58,12 @@ export default async function NewCheckinPage({
     }));
 
   return (
+    <PagePadding>
     <CheckInForm
       clientId={clientId}
       clientName={clientName}
       campaigns={campaigns}
     />
+      </PagePadding>
   );
 }

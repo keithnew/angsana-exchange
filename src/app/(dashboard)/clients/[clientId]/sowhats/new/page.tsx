@@ -2,6 +2,7 @@ import { getUserContext } from '@/lib/auth/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { redirect } from 'next/navigation';
 import SoWhatForm from '../SoWhatForm';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 interface Props {
   params: Promise<{ clientId: string }>;
@@ -30,6 +31,7 @@ export default async function NewSoWhatPage({ params }: Props) {
   );
 
   return (
+    <PagePadding>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">New So What</h1>
@@ -40,5 +42,6 @@ export default async function NewSoWhatPage({ params }: Props) {
 
       <SoWhatForm clientId={clientId} titleBands={titleBands} mode="create" />
     </div>
+      </PagePadding>
   );
 }

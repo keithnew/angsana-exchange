@@ -2,6 +2,7 @@ import { getUserContext } from '@/lib/auth/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { ProspectingProfileClient } from './ProspectingProfileClient';
 import type { Proposition, ManagedListItem, Campaign } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 interface Props {
   params: Promise<{ clientId: string }>;
@@ -135,6 +136,7 @@ export default async function ProspectingProfilePage({ params }: Props) {
   };
 
   return (
+    <PagePadding>
     <ProspectingProfileClient
       clientId={clientId}
       clientName={clientName}
@@ -147,5 +149,6 @@ export default async function ProspectingProfilePage({ params }: Props) {
       userMap={userMap}
       campaigns={campaigns}
     />
+      </PagePadding>
   );
 }

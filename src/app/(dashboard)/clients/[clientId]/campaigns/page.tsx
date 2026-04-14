@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { CampaignTable } from './CampaignTable';
 import type { Campaign, Proposition } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Campaign List Page — /clients/[clientId]/campaigns
@@ -102,6 +103,7 @@ export default async function CampaignsPage({
     user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
 
   return (
+    <PagePadding>
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -125,5 +127,6 @@ export default async function CampaignsPage({
 
       <CampaignTable campaigns={campaigns} clientId={clientId} propositions={propositions} />
     </div>
+      </PagePadding>
   );
 }

@@ -3,6 +3,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { notFound } from 'next/navigation';
 import SoWhatDetailClient from './SoWhatDetailClient';
 import type { SoWhat, Campaign } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 interface Props {
   params: Promise<{ clientId: string; soWhatId: string }>;
@@ -68,6 +69,7 @@ export default async function SoWhatDetailPage({ params }: Props) {
   });
 
   return (
+    <PagePadding>
     <SoWhatDetailClient
       clientId={clientId}
       soWhat={soWhat}
@@ -76,5 +78,6 @@ export default async function SoWhatDetailPage({ params }: Props) {
       userRole={user.claims.role}
       userEmail={user.email}
     />
+      </PagePadding>
   );
 }

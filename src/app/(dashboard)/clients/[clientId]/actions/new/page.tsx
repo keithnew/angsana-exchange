@@ -2,6 +2,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { ActionForm } from '../ActionForm';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * New Action Page — /clients/[clientId]/actions/new
@@ -56,10 +57,12 @@ export default async function NewActionPage({
     }));
 
   return (
+    <PagePadding>
     <ActionForm
       clientId={clientId}
       clientName={clientName}
       campaigns={campaigns}
     />
+      </PagePadding>
   );
 }

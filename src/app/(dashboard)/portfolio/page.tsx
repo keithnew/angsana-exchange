@@ -2,6 +2,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import PortfolioClientComponent from './PortfolioClient';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Portfolio — /portfolio
@@ -92,5 +93,5 @@ export default async function PortfolioPage() {
     })
   );
 
-  return <PortfolioClientComponent clients={clients} />;
+  return <PagePadding><PortfolioClientComponent clients={clients} /></PagePadding>;
 }

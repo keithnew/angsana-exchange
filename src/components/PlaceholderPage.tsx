@@ -12,7 +12,7 @@ export function PlaceholderPage({
   description?: string;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-24">
+    <div className="flex flex-col items-center justify-center p-6 py-24">
       <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white px-12 py-10 text-center">
         <h2 className="text-2xl font-bold text-[var(--foreground)]">{title}</h2>
         {clientId && (

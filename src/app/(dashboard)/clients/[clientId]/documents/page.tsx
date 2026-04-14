@@ -10,6 +10,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext } from '@/lib/auth/server';
 import DocumentsClient from './DocumentsClient';
 import type { DocumentFolderItem, Campaign } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 async function getDocumentFolders(tenantId: string): Promise<DocumentFolderItem[]> {
   try {
@@ -86,6 +87,7 @@ export default async function DocumentsPage({
   ]);
 
   return (
+    <PagePadding>
     <Suspense
       fallback={
         <div className="flex items-center justify-center h-full">
@@ -100,5 +102,6 @@ export default async function DocumentsPage({
         campaigns={campaigns}
       />
     </Suspense>
+      </PagePadding>
   );
 }

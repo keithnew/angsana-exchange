@@ -2,6 +2,7 @@ import { getUserContext } from '@/lib/auth/server';
 import { adminDb } from '@/lib/firebase/admin';
 import SoWhatListClient from './SoWhatListClient';
 import type { SoWhat } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 interface Props {
   params: Promise<{ clientId: string }>;
@@ -53,11 +54,13 @@ export default async function SoWhatsPage({ params }: Props) {
   );
 
   return (
+    <PagePadding>
     <SoWhatListClient
       clientId={clientId}
       soWhats={soWhats}
       titleBands={titleBands}
       userRole={user.claims.role}
     />
+      </PagePadding>
   );
 }

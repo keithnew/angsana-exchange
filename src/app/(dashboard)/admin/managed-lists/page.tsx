@@ -3,6 +3,7 @@ import { getUserContext } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { ManagedListsClient } from './ManagedListsClient';
 import type { ManagedListName, ManagedListItem, DocumentFolderItem } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 const LIST_NAMES: ManagedListName[] = [
   'serviceTypes',
@@ -78,9 +79,11 @@ export default async function ManagedListsPage() {
   };
 
   return (
+    <PagePadding>
     <ManagedListsClient
       initialData={initialData}
       documentFoldersInitial={documentFoldersInitial}
     />
+      </PagePadding>
   );
 }

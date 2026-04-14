@@ -3,6 +3,7 @@ import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/serv
 import { redirect } from 'next/navigation';
 import { CheckInEditForm } from './CheckInEditForm';
 import type { CheckIn, Action } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Edit Check-in Page — /clients/[clientId]/checkins/[checkInId]/edit
@@ -113,6 +114,7 @@ export default async function EditCheckinPage({
     }));
 
   return (
+    <PagePadding>
     <CheckInEditForm
       checkin={checkin}
       linkedActions={linkedActions}
@@ -120,5 +122,6 @@ export default async function EditCheckinPage({
       clientName={clientName}
       campaigns={campaigns}
     />
+      </PagePadding>
   );
 }

@@ -134,7 +134,7 @@ export function looksLikeUid(value: string): boolean {
 // ─── Date Formatting ──────────────────────────────────────────────────────────
 
 /**
- * Format a date as short format: "15 Jan"
+ * Format a date as short format with year: "15 Jan 2026"
  */
 export function formatShortDate(iso: string): string {
   if (!iso) return '—';
@@ -142,6 +142,7 @@ export function formatShortDate(iso: string): string {
     return new Date(iso).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
+      year: 'numeric',
     });
   } catch {
     return '—';

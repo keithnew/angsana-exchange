@@ -314,8 +314,12 @@ function FileRow({
   // Resolve campaign refs to display names
   const fileRefs = file.campaignRefs || [];
 
+  const propRefs = file.propositionRefs || [];
+  const hasTags = fileRefs.length > 0 || propRefs.length > 0;
+
   return (
-    <div className="group flex items-center gap-3 rounded-lg border border-gray-100 px-3 py-2.5 transition-colors hover:bg-gray-50/50">
+    <div className="group rounded-lg border border-gray-100 transition-colors hover:bg-gray-50/50">
+      <div className="flex items-center gap-3 px-3 py-2.5">
       {/* File icon */}
       <FileText className="shrink-0" style={{ width: '18px', height: '18px', color: '#3B7584', strokeWidth: 1.5 }} />
 
@@ -356,42 +360,8 @@ function FileRow({
         </p>
       </div>
 
-      {/* Campaign pills — multiple teal pills for multi-tag */}
-      {fileRefs.length > 0 ? (
-        <div className="flex shrink-0 gap-1 flex-wrap justify-end">
-          {fileRefs.map((cid) => {
-            const cName = campaigns.find((c) => c.id === cid)?.campaignName || cid;
-            return (
-              <span key={cid} className="rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#E1F5EE', color: '#085041' }}>
-                {cName}
-              </span>
-            );
-          })}
-        </div>
-      ) : (
-        <span className="shrink-0 text-[11px] italic text-gray-300">No campaign</span>
-      )}
-
-      {/* Proposition pills */}
-      {(file.propositionRefs || []).length > 0 && (
-        <div className="flex shrink-0 gap-1">
-          {file.propositionRefs!.map((propId) => {
-            const prop = propositions.find((p) => p.id === propId);
-            return (
-              <span
-                key={propId}
-                className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-                style={{ background: '#F0E6F0', color: '#5C3D6E' }}
-              >
-                {prop?.name || propId}
-              </span>
-            );
-          })}
-        </div>
-      )}
-
       {/* Three-dot menu */}
-      <div className="relative" ref={menuRef}>
+      <div className="relative shrink-0" ref={menuRef}>
         <button
           onClick={() => { setMenuOpen(!menuOpen); setCampaignMenuOpen(false); setDeleteConfirm(false); }}
           className="rounded p-1 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 transition-opacity"
@@ -429,7 +399,7 @@ function FileRow({
                   onClick={() => { setCampaignMenuOpen(!campaignMenuOpen); }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 >
-                  <Link2 className="h-[15px] w-[15px]" /> Link to campaign
+                  <Link2 className="h-[15px] w-[15px]" /> Link to campaigns
                 </button>
 
                 {campaignMenuOpen && (
@@ -470,7 +440,7 @@ function FileRow({
                   onClick={() => { setPropositionMenuOpen(!propositionMenuOpen); setCampaignMenuOpen(false); setMoveMenuOpen(false); }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 >
-                  <Link2 className="h-[15px] w-[15px]" /> Link to proposition
+                  <Link2 className="h-[15px] w-[15px]" /> Link to propositions
                 </button>
 
                 {propositionMenuOpen && (
@@ -571,6 +541,31 @@ function FileRow({
           </div>
         )}
       </div>
+      </div>
+
+      {/* Row 3: Tag pills — only rendered when tags exist */}
+      {hasTags && (
+        <div className="flex flex-wrap gap-1.5 px-3 pb-2.5 ml-[42px]">
+          {/* Campaign pills (teal) */}
+          {fileRefs.map((cid) => {
+            const cName = campaigns.find((c) => c.id === cid)?.campaignName || cid;
+            return (
+              <span key={cid} className="inline-block max-w-[200px] truncate rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#E1F5EE', color: '#085041' }} title={cName}>
+                {cName}
+              </span>
+            );
+          })}
+          {/* Proposition pills (mauve) */}
+          {propRefs.map((propId) => {
+            const pName = propositions.find((p) => p.id === propId)?.name || propId;
+            return (
+              <span key={propId} className="inline-block max-w-[200px] truncate rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#F0EBF4', color: '#5B4370' }} title={pName}>
+                {pName}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

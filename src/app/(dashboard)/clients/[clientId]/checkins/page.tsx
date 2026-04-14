@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { CheckInListClient } from './CheckInListClient';
 import type { CheckIn } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Check-in List Page — /clients/[clientId]/checkins
@@ -96,6 +97,7 @@ export default async function CheckinsPage({
     user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
 
   return (
+    <PagePadding>
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -123,5 +125,6 @@ export default async function CheckinsPage({
         campaigns={campaigns}
       />
     </div>
+      </PagePadding>
   );
 }

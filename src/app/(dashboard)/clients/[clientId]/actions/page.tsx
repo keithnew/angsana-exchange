@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActionListClient } from './ActionListClient';
 import type { Action } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Action List Page — /clients/[clientId]/actions
@@ -84,6 +85,7 @@ export default async function ActionsPage({
     user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
 
   return (
+    <PagePadding>
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -112,5 +114,6 @@ export default async function ActionsPage({
         isInternal={isInternal}
       />
     </div>
+      </PagePadding>
   );
 }

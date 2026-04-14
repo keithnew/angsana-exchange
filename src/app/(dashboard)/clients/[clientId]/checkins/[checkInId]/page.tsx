@@ -3,6 +3,7 @@ import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CheckInDetailClient } from './CheckInDetailClient';
 import type { CheckIn, Action } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Check-in Detail Page — /clients/[clientId]/checkins/[checkInId]
@@ -112,6 +113,7 @@ export default async function CheckInDetailPage({
     user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
 
   return (
+    <PagePadding>
     <CheckInDetailClient
       checkin={checkin}
       linkedActions={linkedActions}
@@ -120,5 +122,6 @@ export default async function CheckInDetailPage({
       campaignMap={campaignMap}
       isInternal={isInternal}
     />
+      </PagePadding>
   );
 }

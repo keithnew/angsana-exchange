@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, isInternalRole } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * My Clients — /my-clients
@@ -114,6 +115,7 @@ export default async function MyClientsPage() {
   );
 
   return (
+    <PagePadding>
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-[var(--foreground)]">
@@ -221,5 +223,6 @@ export default async function MyClientsPage() {
         )}
       </div>
     </div>
+      </PagePadding>
   );
 }

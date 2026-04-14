@@ -2,6 +2,7 @@ import { getUserContext } from '@/lib/auth/server';
 import { adminDb } from '@/lib/firebase/admin';
 import WishlistListClient from './WishlistListClient';
 import type { WishlistItem, Campaign } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 interface Props {
   params: Promise<{ clientId: string }>;
@@ -67,6 +68,7 @@ export default async function WishlistsPage({ params }: Props) {
   const geographies = (geosSnap.data()?.items || []).filter((i: { active: boolean }) => i.active);
 
   return (
+    <PagePadding>
     <WishlistListClient
       clientId={clientId}
       wishlists={wishlists}
@@ -76,5 +78,6 @@ export default async function WishlistsPage({ params }: Props) {
       userRole={user.claims.role}
       userEmail={user.email}
     />
+      </PagePadding>
   );
 }

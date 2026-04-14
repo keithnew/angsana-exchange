@@ -751,6 +751,8 @@ export interface DocumentRegistryEntry {
   campaignRef?: string | null;
   /** Campaign IDs. Default: []. Replaces campaignRef. */
   campaignRefs?: string[];
+  /** Proposition IDs. Default: []. */
+  propositionRefs?: string[];
   /** How this entry was created. */
   registrySource: DocumentRegistrySource;
   /** UID of the user who uploaded the file. */

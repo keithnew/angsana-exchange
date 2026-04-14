@@ -3,6 +3,7 @@ import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/serv
 import { redirect } from 'next/navigation';
 import { ClientSettingsClient } from './ClientSettingsClient';
 import type { ClientConfig, ManagedListItem } from '@/types';
+import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
  * Client Settings Page — /clients/[clientId]/settings
@@ -72,11 +73,13 @@ export default async function ClientSettingsPage({
   const canEdit = role === 'internal-admin';
 
   return (
+    <PagePadding>
     <ClientSettingsClient
       clientId={clientId}
       config={clientConfig}
       therapyAreaOptions={therapyAreaOptions}
       canEdit={canEdit}
     />
+      </PagePadding>
   );
 }
