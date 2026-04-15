@@ -335,6 +335,83 @@ export const EXCLUSION_SCOPE_CONFIG: Record<
 };
 
 // =============================================================================
+// Conflicts (Prospecting Rules — Step 2)
+// =============================================================================
+
+/**
+ * Conflict domain type — what kind of domain the conflict covers.
+ */
+export type ConflictDomainType = 'therapy-area' | 'product-category' | 'industry-segment';
+
+/**
+ * Conflict scope — how broadly the conflict applies.
+ */
+export type ConflictScope = 'industry-wide' | 'company-specific';
+
+/**
+ * Conflict status — active or soft-deleted.
+ */
+export type ConflictStatus = 'active' | 'removed';
+
+/**
+ * Conflict entry from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/conflicts/{conflictId}
+ */
+export interface ConflictEntry {
+  /** Firestore document ID (auto-generated) */
+  id?: string;
+  /** What the conflict is about. Free text or managed list value. Max 200 chars. */
+  conflictDomain: string;
+  /** Domain type: therapy-area, product-category, or industry-segment */
+  domainType: ConflictDomainType;
+  /** Scope: industry-wide or company-specific */
+  scope: ConflictScope;
+  /** Required when scope is company-specific. Max 200 chars. */
+  companyName?: string;
+  /** Clarifies the boundary of the conflict. Max 280 chars. */
+  scopeDetail?: string;
+  /** Additional context. Max 280 chars. */
+  notes?: string;
+  /** Status: active or removed. Default: active. */
+  status: ConflictStatus;
+  /** Firebase UID of creator. */
+  addedBy: string;
+  /** Display name of creator. */
+  addedByName: string;
+  /** Creation timestamp. */
+  addedAt: string; // ISO string on client side
+  /** Firebase UID of remover. Null when active. */
+  removedBy?: string;
+  /** Display name of remover. */
+  removedByName?: string;
+  /** Removal timestamp. Null when active. */
+  removedAt?: string;
+}
+
+/**
+ * Conflict domain type display configuration — colour-coded badges.
+ */
+export const CONFLICT_DOMAIN_TYPE_CONFIG: Record<
+  ConflictDomainType,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'therapy-area': { label: 'Therapy area', colour: '#FFFFFF', bgColour: '#3B7584' },
+  'product-category': { label: 'Product category', colour: '#FFFFFF', bgColour: '#FCB242' },
+  'industry-segment': { label: 'Industry segment', colour: '#FFFFFF', bgColour: '#827786' },
+};
+
+/**
+ * Conflict scope display configuration — colour-coded badges.
+ */
+export const CONFLICT_SCOPE_CONFIG: Record<
+  ConflictScope,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'industry-wide': { label: 'Industry-wide', colour: '#FFFFFF', bgColour: '#3B7584' },
+  'company-specific': { label: 'Company-specific', colour: '#FFFFFF', bgColour: '#FCB242' },
+};
+
+// =============================================================================
 // Managed Lists
 // =============================================================================
 

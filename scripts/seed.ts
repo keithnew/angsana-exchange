@@ -947,6 +947,91 @@ async function seedFirestore() {
   console.log(`    ✓ Seeded ${exclusionEntries.length} exclusion entries`);
   } // end exclusion guard
 
+  // --- Conflicts for Cegid Spain (Prospecting Rules — Conflicts) ---
+  console.log('  Seeding conflicts for cegid-spain...');
+  const conflictsRef = cegidRef.collection('conflicts');
+
+  // Guard: skip if conflicts already exist (prevents duplicates on re-run)
+  const existingConflicts = await conflictsRef.limit(1).get();
+  if (!existingConflicts.empty) {
+    console.log(`    ⏭ Conflicts already exist (${existingConflicts.size}+ docs) — skipping to prevent duplicates`);
+  } else {
+    const auth2 = getAuth();
+    let keithUid2 = 'seed-script';
+    try {
+      const keithUser2 = await auth2.getUserByEmail('keith@angsana.com');
+      keithUid2 = keithUser2.uid;
+    } catch { /* use fallback */ }
+
+    const conflictEntries = [
+      {
+        conflictDomain: 'ERP Solutions',
+        domainType: 'product-category',
+        scope: 'industry-wide',
+        companyName: null,
+        scopeDetail: "Cegid's core product — cannot prospect competitors in this space",
+        notes: null,
+        addedAt: new Date('2026-02-10'),
+      },
+      {
+        conflictDomain: 'Point of Sale Systems',
+        domainType: 'product-category',
+        scope: 'industry-wide',
+        companyName: null,
+        scopeDetail: 'Cegid POS is a key product line',
+        notes: null,
+        addedAt: new Date('2026-02-15'),
+      },
+      {
+        conflictDomain: 'Payroll & HR Software',
+        domainType: 'product-category',
+        scope: 'company-specific',
+        companyName: 'SAP',
+        scopeDetail: 'SAP SuccessFactors only — other SAP divisions are fine',
+        notes: null,
+        addedAt: new Date('2026-02-20'),
+      },
+      {
+        conflictDomain: 'Financial Services',
+        domainType: 'industry-segment',
+        scope: 'industry-wide',
+        companyName: null,
+        scopeDetail: 'Not a target vertical for Cegid',
+        notes: null,
+        addedAt: new Date('2026-03-01'),
+      },
+      {
+        conflictDomain: 'Government & Public Sector',
+        domainType: 'industry-segment',
+        scope: 'industry-wide',
+        companyName: null,
+        scopeDetail: 'Not a target vertical',
+        notes: null,
+        addedAt: new Date('2026-03-05'),
+      },
+    ];
+
+    for (const entry of conflictEntries) {
+      await conflictsRef.add({
+        conflictDomain: entry.conflictDomain,
+        domainType: entry.domainType,
+        scope: entry.scope,
+        companyName: entry.companyName,
+        scopeDetail: entry.scopeDetail,
+        notes: entry.notes,
+        status: 'active',
+        addedBy: keithUid2,
+        addedByName: 'Keith New',
+        addedAt: Timestamp.fromDate(entry.addedAt),
+        removedBy: null,
+        removedByName: null,
+        removedAt: null,
+      });
+      console.log(`    ✓ Conflict: ${entry.conflictDomain} (${entry.domainType}, ${entry.scope})`);
+    }
+    console.log(`    ✓ Seeded ${conflictEntries.length} conflict entries for Cegid Spain`);
+  } // end conflicts guard
+
   // --- Client: Wavix (stub — no campaigns) ---
   console.log('  Seeding client: wavix (stub)...');
   const wavixRef = tenantRef.collection('clients').doc('wavix');
@@ -1184,6 +1269,71 @@ async function seedFirestore() {
     lastUpdatedAt: now.toDate().toISOString(),
   });
   console.log('    ✓ Proposition: General Pipeline (other)');
+
+  // --- Wavix: Conflicts (therapy-area type, tests healthcare path) ---
+  console.log('  Seeding conflicts for wavix...');
+  const wavixConflictsRef = wavixRef.collection('conflicts');
+
+  const existingWavixConflicts = await wavixConflictsRef.limit(1).get();
+  if (!existingWavixConflicts.empty) {
+    console.log(`    ⏭ Wavix conflicts already exist — skipping to prevent duplicates`);
+  } else {
+    let keithUid3 = 'seed-script';
+    try {
+      const keithUser3 = await getAuth().getUserByEmail('keith@angsana.com');
+      keithUid3 = keithUser3.uid;
+    } catch { /* use fallback */ }
+
+    const wavixConflicts = [
+      {
+        conflictDomain: 'Oncology',
+        domainType: 'therapy-area',
+        scope: 'company-specific',
+        companyName: 'Merck',
+        scopeDetail: 'Merck oncology only — other franchises ok',
+        notes: null,
+        addedAt: new Date('2026-02-12'),
+      },
+      {
+        conflictDomain: "Alzheimer's Disease",
+        domainType: 'therapy-area',
+        scope: 'industry-wide',
+        companyName: null,
+        scopeDetail: null,
+        notes: null,
+        addedAt: new Date('2026-02-18'),
+      },
+      {
+        conflictDomain: 'Sleep Medicines',
+        domainType: 'therapy-area',
+        scope: 'industry-wide',
+        companyName: null,
+        scopeDetail: null,
+        notes: null,
+        addedAt: new Date('2026-03-01'),
+      },
+    ];
+
+    for (const entry of wavixConflicts) {
+      await wavixConflictsRef.add({
+        conflictDomain: entry.conflictDomain,
+        domainType: entry.domainType,
+        scope: entry.scope,
+        companyName: entry.companyName,
+        scopeDetail: entry.scopeDetail,
+        notes: entry.notes,
+        status: 'active',
+        addedBy: keithUid3,
+        addedByName: 'Keith New',
+        addedAt: Timestamp.fromDate(entry.addedAt),
+        removedBy: null,
+        removedByName: null,
+        removedAt: null,
+      });
+      console.log(`    ✓ Conflict: ${entry.conflictDomain} (${entry.domainType}, ${entry.scope})`);
+    }
+    console.log(`    ✓ Seeded ${wavixConflicts.length} conflict entries for Wavix`);
+  }
 
   // --- Wavix: Empty Prospecting Profile ---
   console.log('  Seeding Slice 8 empty prospecting profile for wavix...');

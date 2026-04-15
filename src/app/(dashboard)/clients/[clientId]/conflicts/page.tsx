@@ -1,4 +1,4 @@
-import { PlaceholderPage } from '@/components/PlaceholderPage';
+import { ConflictsClient } from './ConflictsClient';
 
 export default async function ConflictsPage({
   params,
@@ -6,11 +6,5 @@ export default async function ConflictsPage({
   params: Promise<{ clientId: string }>;
 }) {
   const { clientId } = await params;
-  return (
-    <PlaceholderPage
-      title="Conflicts"
-      clientId={clientId}
-      description="Conflict rules prevent prospecting into accounts where another client has an active relationship. This module is coming in a future update."
-    />
-  );
+  return <ConflictsClient clientId={clientId} />;
 }

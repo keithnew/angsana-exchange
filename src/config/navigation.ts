@@ -48,7 +48,6 @@ export const clientNavItems: NavItem[] = [
       {
         label: 'Conflicts',
         route: '/clients/{clientId}/conflicts',
-        placeholder: true,
       },
       {
         label: 'Relationships',
