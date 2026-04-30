@@ -724,10 +724,62 @@ See spec body. Key tokens:
 14. Production migration runbook.
 15. AC1–AC12 smoke test.
 
-# 13. Definition of done
+# 13. Definition of done — AC1–AC12
 
-See AC1–AC12 in the source spec. Tested per role on Cegid Spain
-post-migration.
+Tested per role on Cegid Spain post-migration. The four roles are
+internal-admin, internal-user, client-approver (alessandro@cegid.com),
+client-viewer (monica@cegid.com).
+
+- **AC1:** Internal-admin and internal-user can see all six migrated
+  Cegid wishlist entries with the new structured fields. Each entry
+  shows companyName, status dot (grey for candidate — all six should be
+  candidate post-migration), priority, status, campaigns (where set),
+  Added date and addedBy.
+- **AC2:** Adding a new wishlist entry through the upgraded form
+  succeeds for internal users and client-approver. Form validation
+  blocks save when both company name and targeting hints are empty.
+  Source picker is required. Source detail appears conditionally for
+  conference-list, industry-event, other.
+- **AC3:** Editing an existing entry preserves all fields. The
+  "Migrated note" banner appears for any entry with `targetingHintsRaw`
+  populated (likely zero for Cegid). Setting `targetingHints` clears
+  `targetingHintsRaw` on save.
+- **AC4:** Clicking a wishlist row opens the side drawer with Details
+  and Discussion tabs. Details tab shows the row's structured fields
+  read-only.
+- **AC5:** "Raise Question" creates a `wishlist-clarification` Work Item
+  with state `raised`. Audience defaults to shared; toggling to
+  internal-only works. Title and body required; priority defaults to
+  medium.
+- **AC6:** Adding a comment on a Work Item appends to the activity log
+  with correct timestamp and author. Audience override on a comment
+  works (an internal-only comment on a shared Work Item is invisible
+  to the client user).
+- **AC7:** State transitions work per §4.3: `raised → clarified`,
+  `clarified → closed`, `raised → closed` (with comment requirement on
+  shortcut close). Illegal transitions are blocked.
+- **AC8:** Open Items column on the main table reflects the count of
+  non-closed, non-archived Work Items per entry. Clicking the count
+  opens the row drawer to the Discussion tab. Page header subtitle
+  reflects the total across visible entries. (Implementation: simple
+  count query at this scale; see §7.7 for scale-up path. Do not
+  pre-optimise.)
+- **AC9:** Client-approver (alessandro@cegid.com) sees: all six
+  wishlist entries; can edit and add entries; can raise shared Work
+  Items; cannot see Source field; cannot see internal-only Work Items
+  or comments. Client-viewer (monica@cegid.com) sees the same as
+  client-approver but read-only — no add, no edit, no raise.
+- **AC10:** Events are emitted for wishlist mutations and Work Item
+  activity, observable in the existing Exchange event log / Cloud
+  Logging output.
+- **AC11:** Migration script: idempotent (running twice produces the
+  same result). Migration log lists every entry processed, every Work
+  Item created, every So What drafted (likely zero for Cegid), every
+  `targetingHintsRaw` preserved.
+- **AC12:** No R1 free-text notes content is lost. Either it is mapped
+  to structured fields, captured in a closed Work Item, drafted as a
+  So What, or preserved in `targetingHintsRaw` with a UI prompt to
+  clean up.
 
 # 14. What this slice does NOT include
 
