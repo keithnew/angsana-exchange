@@ -766,6 +766,87 @@ async function seedFirestore() {
         updatedAt: Timestamp.fromDate(new Date('2026-03-20')),
       },
     },
+    // -------------------------------------------------------------------------
+    // R2 PVS Slice 1 — §6.6 dev-only seeds (A/B/C).
+    //
+    // These three seeds exercise the migration's notes-routing logic
+    // end-to-end (per spec §6.3 and the classifier at
+    // src/lib/wishlists/notesClassifier.ts):
+    //
+    //   Seed A (Inditex):         conversational notes ending in `?`
+    //                             → `work-item` route → closed internal
+    //                             wishlist-clarification Work Item.
+    //   Seed B (Carrefour Spain): short hint-shaped notes (no terminator)
+    //                             → `targeting-raw` route → preserved as
+    //                             targetingHintsRaw. Also has a populated
+    //                             campaignRef, exercising the §6.2
+    //                             campaignRef → campaignRefs[] lift.
+    //   Seed C (Mercadona):       observation-shaped conversational notes
+    //                             → `work-item` route → closed internal
+    //                             Work Item. Empty campaignRef. Different
+    //                             addedBy email to exercise the addedBy
+    //                             email → {uid, name} lookup path.
+    //
+    // The classifier's `so-what-draft` route is intentionally not
+    // exercised by any seed (per spec §6.6: "case-study content does not
+    // typically appear on Wishlists"; covered by classifier unit tests
+    // only). Migrations are idempotent; running migrate-wishlists-r2.ts
+    // a second time will skip these once they carry schemaVersion.
+    //
+    // Note: §6.6's seed labels ("Work-Item-from-notes",
+    // "campaignRefs-from-notes", "source+sourceDetail-from-notes") are
+    // pre-implementation shorthand that doesn't fully map to the
+    // classifier as actually built. The labels above describe what the
+    // seeds exercise in the migration script that 7a delivered. The
+    // 7c handover will note this drift for §6.6 to be updated to match.
+    // -------------------------------------------------------------------------
+    {
+      id: 'wishlist-seed-a-inditex',
+      data: {
+        companyName: 'Inditex',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'high',
+        notes:
+          'Has anyone reached out to Zara digital team yet? Want to avoid duplicating the Mango outreach if there\'s overlap on parent group.',
+        status: 'new',
+        campaignRef: '',
+        addedBy: 'alessandro@cegid.com',
+        addedDate: Timestamp.fromDate(new Date('2026-04-15')),
+        updatedAt: Timestamp.fromDate(new Date('2026-04-15')),
+      },
+    },
+    {
+      id: 'wishlist-seed-b-carrefour-spain',
+      data: {
+        companyName: 'Carrefour Spain',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'medium',
+        notes: 'Hypermarkets Madrid & Barcelona large format',
+        status: 'under-review',
+        campaignRef: 'iberia-retail-pos-fashion',
+        addedBy: 'alessandro@cegid.com',
+        addedDate: Timestamp.fromDate(new Date('2026-04-18')),
+        updatedAt: Timestamp.fromDate(new Date('2026-04-18')),
+      },
+    },
+    {
+      id: 'wishlist-seed-c-mercadona',
+      data: {
+        companyName: 'Mercadona',
+        sector: 'retail-consumer',
+        geography: 'iberia',
+        priority: 'medium',
+        notes:
+          'Met their CTO at NRF — they mentioned switching their POS provider next year, but only if the new vendor can run a phased rollout across 1,600+ stores without disrupting trading hours. Worth a follow-up.',
+        status: 'new',
+        campaignRef: '',
+        addedBy: 'mike@angsana.com',
+        addedDate: Timestamp.fromDate(new Date('2026-04-22')),
+        updatedAt: Timestamp.fromDate(new Date('2026-04-22')),
+      },
+    },
   ];
 
   for (const wishlist of wishlists) {
