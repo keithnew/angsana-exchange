@@ -85,6 +85,24 @@ service cloud.firestore {
           allow write: if false; // Admin SDK only (campaign CRUD in later slice)
         }
 
+        // ─── Work Items (R2 PVS Slice 1 — Wishlists) ───────────
+        // Local Work Item lite, per spec §4.1. Audience gating: client
+        // users see only `shared` or `client` audience; internal users see
+        // all. The 'client' audience value is reserved per spec §4.2 but
+        // not produced in this slice.
+        // All writes go through API routes using the Admin SDK; rules are
+        // a defence-in-depth layer.
+        match /workItems/{workItemId} {
+          allow read: if isTenantMember(tenantId)
+                      && hasClientAccess(clientId)
+                      && (
+                        isInternal()
+                        || resource.data.audience == 'shared'
+                        || resource.data.audience == 'client'
+                      );
+          allow write: if false; // Admin SDK only
+        }
+
         // ─── Future subcollections (checkins, actions, etc.) ────
         match /{subcollection}/{docId} {
           allow read: if isTenantMember(tenantId)
