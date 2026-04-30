@@ -14,7 +14,19 @@ const eslintConfig = [
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // Honour the leading-underscore convention for intentionally-unused
+      // identifiers (function args, destructured props, locals). Idiomatic
+      // for cases like `onMutated: _onMutated` where the prop is part of
+      // the contract but unused in this render path.
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
     },
   },
 ];

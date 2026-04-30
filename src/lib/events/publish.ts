@@ -192,10 +192,8 @@ export async function publishEvent(
   const entry = { severity, angsanaEvent: envelope };
 
   if (severity === 'ERROR') {
-    // eslint-disable-next-line no-console
     console.error(JSON.stringify(entry));
   } else {
-    // eslint-disable-next-line no-console
     console.log(JSON.stringify(entry));
   }
 

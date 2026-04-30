@@ -58,7 +58,7 @@ export function CheckInDetailClient({
   checkin,
   linkedActions,
   clientId,
-  clientName: _clientName, // eslint-disable-line @typescript-eslint/no-unused-vars -- passed by parent, reserved for future use
+  clientName: _clientName, // passed by parent, reserved for future use
   campaignMap,
   isInternal,
 }: {

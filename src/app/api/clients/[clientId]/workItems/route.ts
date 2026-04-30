@@ -38,7 +38,6 @@ import {
 
 const VALID_TYPES: WorkItemType[] = ['wishlist-clarification'];
 const VALID_AUDIENCES: WorkItemAudience[] = ['internal', 'shared', 'client'];
-const VALID_STATES: WishlistClarificationState[] = ['raised', 'clarified', 'closed'];
 
 // ─── Wire conversion ────────────────────────────────────────────────────────
 
