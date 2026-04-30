@@ -192,15 +192,25 @@ export interface WorkItem {
 }
 
 /**
+ * Wire-shape activity log entry: same discriminated union as
+ * `ActivityLogEntry` but with `at` as ISO string. Distributive conditional
+ * type so the union is preserved (TS's `Omit<Union, K>` collapses the
+ * discriminator otherwise).
+ */
+export type ActivityLogEntryWire = ActivityLogEntry extends infer T
+  ? T extends { at: Timestamp | string }
+    ? Omit<T, 'at'> & { at: string }
+    : never
+  : never;
+
+/**
  * Wire-shape: timestamps as ISO strings. Used for client serialisation.
  */
 export interface WorkItemWire extends Omit<WorkItem, 'createdAt' | 'updatedAt' | 'deadline' | 'activityLog'> {
   createdAt: string;
   updatedAt: string;
   deadline: string | null;
-  activityLog: Array<
-    Omit<ActivityLogEntry, 'at'> & { at: string }
-  >;
+  activityLog: ActivityLogEntryWire[];
 }
 
 // ─── Display config ─────────────────────────────────────────────────────────

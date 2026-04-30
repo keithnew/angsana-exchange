@@ -26,6 +26,7 @@ import {
 } from '@/lib/auth/requestUser';
 import { publishEvent } from '@/lib/events/publish';
 import { readWishlistEntry, type RawWishlistDoc } from '@/lib/wishlists/readAdapter';
+import { computeOpenItemCounts } from '@/lib/workItems/openItemCounts';
 import {
   SOURCES_REQUIRING_DETAIL,
   type CompanyRef,
@@ -95,57 +96,18 @@ export async function GET(
     .filter((e) => !e.archived);
 
   if (includeCounts) {
-    // Single scan over Work Items, bucketed by subject.entityId. Page-level
-    // efficient (spec §7.7).
-    const workItemsRef = adminDb
-      .collection('tenants')
-      .doc(user.tenantId)
-      .collection('clients')
-      .doc(clientId)
-      .collection('workItems');
-
-    let openSnap;
-    try {
-      openSnap = await workItemsRef
-        .where('archived', '==', false)
-        .where('state', 'in', ['raised', 'clarified'])
-        .get();
-    } catch {
-      // The composite index may not yet exist — fall back to full scan.
-      openSnap = await workItemsRef.get();
-    }
-
-    const buckets = new Map<string, { count: number; highest: 'high' | 'medium' | 'low' | null }>();
-    const priorityRank: Record<'high' | 'medium' | 'low', number> = { high: 3, medium: 2, low: 1 };
-
-    for (const wi of openSnap.docs) {
-      const data = wi.data() as Record<string, unknown>;
-      if (data.archived) continue;
-      const state = data.state as string;
-      if (state !== 'raised' && state !== 'clarified') continue;
-
-      const audience = (data.audience as string) ?? 'shared';
-      // Audience gate at read-time (defence in depth — rules also block).
-      if (!isInternal(user) && audience === 'internal') continue;
-
-      const subject = data.subject as { entityType?: string; entityId?: string } | undefined;
-      if (!subject || subject.entityType !== 'wishlist' || !subject.entityId) continue;
-
-      const wishlistId = subject.entityId;
-      const priority = (data.priority as 'high' | 'medium' | 'low') ?? 'medium';
-
-      const cur = buckets.get(wishlistId) ?? { count: 0, highest: null };
-      cur.count += 1;
-      if (!cur.highest || priorityRank[priority] > priorityRank[cur.highest]) {
-        cur.highest = priority;
-      }
-      buckets.set(wishlistId, cur);
-    }
+    // Shared helper — see src/lib/workItems/openItemCounts.ts.
+    const buckets = await computeOpenItemCounts({
+      tenantId: user.tenantId,
+      clientId,
+      subjectEntityType: 'wishlist',
+      hideInternal: !isInternal(user),
+    });
 
     for (const e of entries) {
       const b = buckets.get(e.wishlistId);
       e.openItemCount = b?.count ?? 0;
-      e.openItemHighestPriority = b?.highest ?? null;
+      e.openItemHighestPriority = b?.highestPriority ?? null;
     }
   }
 
