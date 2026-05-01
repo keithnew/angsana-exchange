@@ -75,9 +75,20 @@ function tsToISO(value: Timestamp | Date | string | undefined): string {
   if (!value) return new Date(0).toISOString();
   if (typeof value === 'string') return value;
   if (value instanceof Date) return value.toISOString();
-  // Firestore Timestamp
+  // Firestore Timestamp (admin SDK shape, with toDate())
   if (typeof (value as Timestamp).toDate === 'function') {
     return (value as Timestamp).toDate().toISOString();
+  }
+  // Plain-object Timestamp shape ({_seconds, _nanoseconds} or {seconds,
+  // nanoseconds}). This can occur when a doc is serialised across an RSC
+  // boundary or hand-written in a script that doesn't go through the admin
+  // SDK. Without this branch the value silently falls through to epoch-0,
+  // which is the exact "01/01/1970" symptom that surfaced post-migration
+  // for the seeded R2 docs.
+  const v = value as unknown as { _seconds?: number; seconds?: number };
+  const seconds = v?._seconds ?? v?.seconds;
+  if (typeof seconds === 'number' && Number.isFinite(seconds)) {
+    return new Date(seconds * 1000).toISOString();
   }
   return new Date(0).toISOString();
 }

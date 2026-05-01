@@ -59,11 +59,27 @@ function tsToISO(v: Timestamp | Date | string | undefined | null): string {
   return new Date(0).toISOString();
 }
 
-function toWire(id: string, raw: Record<string, unknown>): WorkItemWire {
-  const activityLog = ((raw.activityLog as ActivityLogEntry[] | undefined) ?? []).map((e) => ({
-    ...e,
-    at: tsToISO(e.at as Timestamp | string),
-  }));
+function toWire(
+  id: string,
+  raw: Record<string, unknown>,
+  viewerIsInternal: boolean
+): WorkItemWire {
+  // Per spec §4.4 / §5.2: comment audience can be 'internal' independently
+  // of the parent Work Item's audience. Non-internal viewers must never
+  // see internal-audience commented entries — that's a confidentiality
+  // breach. Other entry types (state-changed, audience-changed, archived-
+  // changed) carry no audience flag and are always shown to anyone who
+  // can see the parent Work Item.
+  const activityLog = ((raw.activityLog as ActivityLogEntry[] | undefined) ?? [])
+    .filter((e) => {
+      if (viewerIsInternal) return true;
+      if (e.type === 'commented' && e.audience === 'internal') return false;
+      return true;
+    })
+    .map((e) => ({
+      ...e,
+      at: tsToISO(e.at as Timestamp | string),
+    }));
   return {
     workItemId: id,
     workItemType: (raw.workItemType as WorkItemType) ?? 'wishlist-clarification',
@@ -109,7 +125,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: 'Work Item not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ item: toWire(snap.id, data) });
+  return NextResponse.json({ item: toWire(snap.id, data, isInternal(user)) });
 }
 
 // ─── PATCH ──────────────────────────────────────────────────────────────────

@@ -241,9 +241,14 @@ export default function WishlistListClient({
                 <th className="text-left px-3 py-2 font-medium">Company</th>
                 <th className="text-left px-3 py-2 font-medium">Targeting</th>
                 <th className="text-left px-3 py-2 font-medium">Priority</th>
-                {internal && (
-                  <th className="text-left px-3 py-2 font-medium">Status</th>
-                )}
+                {/*
+                  Status column is visible to ALL roles per spec §6.6 ("the
+                  list shows status as a coloured pill"). It's read-only for
+                  client roles — they can see lifecycle progress but not
+                  transition. Campaigns remains internal-only because
+                  campaign membership is internal taxonomy.
+                */}
+                <th className="text-left px-3 py-2 font-medium">Status</th>
                 {internal && (
                   <th className="text-left px-3 py-2 font-medium">Campaigns</th>
                 )}
@@ -404,19 +409,17 @@ function WishlistRow({
           {priorityCfg.label}
         </span>
       </td>
-      {internal && (
-        <td className="px-3 py-2">
-          <span
-            className="px-2 py-0.5 rounded text-xs font-medium"
-            style={{
-              color: statusCfg.colour,
-              backgroundColor: statusCfg.bgColour,
-            }}
-          >
-            {statusCfg.label}
-          </span>
-        </td>
-      )}
+      <td className="px-3 py-2">
+        <span
+          className="px-2 py-0.5 rounded text-xs font-medium"
+          style={{
+            color: statusCfg.colour,
+            backgroundColor: statusCfg.bgColour,
+          }}
+        >
+          {statusCfg.label}
+        </span>
+      </td>
       {internal && (
         <td className="px-3 py-2 text-xs text-gray-600">
           {entry.campaignRefs.length === 0 ? (
@@ -447,8 +450,16 @@ function WishlistRow({
         )}
       </td>
       <td className="px-3 py-2 text-xs text-gray-500">
+        {/*
+          Pin a stable locale so SSR (server's default Intl) and CSR
+          (browser locale) produce the same string — otherwise Next.js
+          flags a hydration mismatch and React falls back to the SSR
+          string, which under some clock skew rendered as 01/01/1970.
+          en-GB == DD/MM/YYYY, matching how this product is typically
+          rendered in the EU/UK market.
+        */}
         {entry.addedAt
-          ? new Date(entry.addedAt).toLocaleDateString()
+          ? new Date(entry.addedAt).toLocaleDateString('en-GB')
           : '—'}
       </td>
     </tr>

@@ -39,6 +39,16 @@ export interface WorkItemStreamProps {
   currentUserRole: UserRole;
   /** Override the default empty-state copy. Stays subject-agnostic in default. */
   emptyStateLabel?: string;
+  /**
+   * Fired after any *durable* mutation in the stream — a new Work Item
+   * raised, a state transition, an audience change, or a comment posted.
+   * Use this to bubble "something changed" up to the parent so it can
+   * refresh derived state (e.g. open-item counts on the wishlist row).
+   * The stream still re-loads its own list locally; this is purely the
+   * upstream notification hook. Optional — streams that don't need to
+   * tell anyone (e.g. a standalone Work Items page) can omit it.
+   */
+  onMutated?: () => void;
 }
 
 function isInternalRole(role: UserRole): boolean {
@@ -51,6 +61,7 @@ export function WorkItemStream({
   workItemType,
   currentUserRole,
   emptyStateLabel = 'No questions or notes yet.',
+  onMutated,
 }: WorkItemStreamProps) {
   const [items, setItems] = useState<WorkItemWire[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +160,7 @@ export function WorkItemStream({
           onCreated={() => {
             setRaising(false);
             void load(true);
+            onMutated?.();
           }}
           onCancel={() => setRaising(false)}
         />
@@ -187,7 +199,10 @@ export function WorkItemStream({
               item={item}
               isInternal={internal}
               canTransition={canTransition}
-              onUpdated={() => void load(true)}
+              onUpdated={() => {
+                void load(true);
+                onMutated?.();
+              }}
             />
           ))}
         </div>

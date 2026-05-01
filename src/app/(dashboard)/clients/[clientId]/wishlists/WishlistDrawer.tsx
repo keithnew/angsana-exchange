@@ -45,12 +45,12 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
   /**
-   * Reserved for future per-mutation page refreshes (e.g. after a Work
-   * Item state-change while the drawer is open). The current
-   * implementation lets the in-drawer Work Item stream silently re-fetch
-   * itself on each mutation, and lets the page-level open-item counts
-   * update on drawer close (`onSaved` / unmount + router.refresh()), so
-   * we don't flicker the table on every comment.
+   * Fired when something changed inside the drawer that the parent page
+   * may want to reflect (Work Item state-changed, audience-changed,
+   * archived, comment posted, new Work Item raised). The parent
+   * typically calls `router.refresh()` to repopulate the row's open-item
+   * count. The drawer stays open after a Work Item mutation; only
+   * `onSaved` (a successful Wishlist edit/archive) closes it.
    */
   onMutated: () => void;
 }
@@ -73,7 +73,7 @@ export default function WishlistDrawer({
   campaignNameMap,
   onClose,
   onSaved,
-  onMutated: _onMutated,
+  onMutated,
 }: Props) {
   const [tab, setTab] = useState<'details' | 'discussion'>(initialTab);
   const [editing, setEditing] = useState(false);
@@ -241,6 +241,7 @@ export default function WishlistDrawer({
               workItemType="wishlist-clarification"
               currentUserRole={currentUserRole}
               emptyStateLabel="No questions or notes raised yet for this wishlist entry."
+              onMutated={onMutated}
             />
           )}
         </div>
