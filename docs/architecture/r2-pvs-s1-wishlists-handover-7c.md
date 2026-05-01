@@ -309,6 +309,54 @@ Anomalies, if any: `<paste, with reproduction steps>`
 
 ---
 
+## Dev-smoke fix log (post-Pass-4, pre-Cegid-prod)
+
+The four-role smoke against dev surfaced five issues before the Cegid
+Spain prod migration was attempted. All five were fixed in-task; the
+prod migration was deliberately gated on these clearing because they
+are real regressions / leaks, not cosmetic, and three of them would
+have failed AC9 (client-approver visibility) outright.
+
+| #   | Bug (smoke pass)                                              | Severity     | Root cause                                                                                                                                                                                                       | Fix                                                                                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F4  | Internal-only Work Item comments leaked to client roles (3)   | **security** | The Work Item GET routes serialised the full `activityLog` array regardless of viewer role. Audience-gating was applied only at the *parent* level (the Work Item's own `audience` field), not at the entry level. | `src/app/api/clients/[clientId]/workItems/[workItemId]/route.ts` and `…/workItems/route.ts`: `toWire()` now takes a `viewerIsInternal: boolean` and filters `commented`-type entries with `audience === 'internal'` for non-internal viewers. Other entry types (state-changed, etc.) remain visible.       |
+| F5  | "Added" column showed 01/01/1970 for migrated rows (1)        | data         | `tsToISO()` in the read adapter handled admin-SDK Timestamps (`.toDate()`) and `Date`/`string`, but not the plain-object Timestamp shape (`{_seconds, _nanoseconds}`) that arrives when a doc is serialised across an RSC boundary or written by a script that doesn't go through the admin SDK. Fall-through path returned `new Date(0).toISOString()` — hence epoch-0. | `src/lib/wishlists/readAdapter.ts`: `tsToISO()` now also recognises `{_seconds}` and `{seconds}` shapes and converts via `seconds * 1000`. Documented in-line so the next maintainer doesn't trim the branch as "redundant".                                                                              |
+| F6  | Hydration-mismatch warning on date format (1)                 | UX           | `toLocaleDateString()` with no locale uses the runtime's default Intl locale, which differs between Node SSR and the browser. React fell back to the SSR string on mismatch, occasionally rendering as 01/01/1970 if the parent shape bug masked it. | `src/app/(dashboard)/clients/[clientId]/wishlists/WishlistListClient.tsx`: the row "Added" date now uses `toLocaleDateString('en-GB')` (DD/MM/YYYY) — stable across SSR/CSR and matches EU/UK conventions where this product is operated.                                                                |
+| F7  | Open-items count on the row didn't refresh after a state-change inside the drawer (1) | UX           | `WishlistDrawer` accepted an `onMutated` prop, destructured it as `_onMutated` (intentional underscore so 7b lint would pass), and never wired it through to the in-drawer `WorkItemStream`. So state-changes/comments updated only the stream's local list, never the page's row. | `src/components/workItems/WorkItemStream.tsx`: added optional `onMutated` prop, fired in the same callbacks that already trigger `load(true)` (raise / state-change / audience-change / archive / comment via `WorkItemCard.onUpdated`). `WishlistDrawer.tsx` now passes its `onMutated` through. The page-level `router.refresh()` is what repopulates the row's `openItemCount`. |
+| F8  | Status column hidden from client-approver / client-viewer (3, 4) | spec-fit     | Original 7b row implementation gated Status on `internal && (...)`. Spec §6.6 calls for status to be visible to all roles (read-only for clients) — clients need to see lifecycle progress; the gate that matters for transition rights is enforced server-side in PATCH. | `WishlistListClient.tsx`: dropped the `internal && (...)` wrapper around the Status column header and cell. Campaigns column remains internal-only because campaign membership is internal taxonomy. Clients now see Status as a coloured pill matching what the drawer header already showed them.    |
+
+`tsc --noEmit` clean, `vitest run` 38/38 green, `next lint` clean for
+all touched files (the 10 pre-existing `no-explicit-any` warnings under
+`/api/clients/[clientId]/{conflicts,exclusions,relationships}/route.ts`
+remain — those routes are 7d/7e/7f scope and were excluded from this
+task's lint pre-flight).
+
+### Polish-debt deferred from this task
+
+Surfaced during smoke, not blocking AC1–AC12, queued for a refinement
+slice rather than the prod migration:
+
+- Activity-log entries display the actor's UID rather than display
+  name. The `actor` shape carries `name` already; the WorkItemCard
+  formatter just needs to prefer it. Cosmetic.
+- "Raise question" / "Close" buttons accept zero-length comments
+  silently. The state-machine validates `comment-required` for
+  raised→closed; the form should mirror that constraint client-side
+  with a disabled-button + helper text rather than letting the API
+  bounce a 400. UX, not spec.
+- The "Source" picker on the create form is exposed to clients. Per
+  spec §3.5 source is internal taxonomy (manual / migration /
+  campaign-feed / sf-account-import), and clients shouldn't be picking
+  it. Server-side default already coerces this to `manual` for client
+  roles, so this is a UI-tidy, not a security issue.
+- A closed Work Item shows no "re-raise" affordance. If a client
+  posts a follow-up comment on a closed item, the comment is recorded
+  but the item stays closed. Spec §4.3 doesn't define a `closed →
+  raised` transition, so this is awaiting a spec decision rather
+  than an implementation bug.
+
+---
+
 ## What is *not* in 7c (next slices)
 
 Out of scope per the brief; surfaced here so the next-slice scoper
