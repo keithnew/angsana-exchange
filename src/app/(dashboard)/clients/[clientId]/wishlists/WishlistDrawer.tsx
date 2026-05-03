@@ -21,12 +21,11 @@
 // =============================================================================
 
 import { useState } from 'react';
-import { X, Edit, Trash2, ExternalLink } from 'lucide-react';
+import { X, Edit, Trash2, ExternalLink, Globe } from 'lucide-react';
 import { WishlistForm, type WishlistFormCampaign } from '@/components/wishlists/WishlistForm';
 import { WorkItemStream } from '@/components/workItems/WorkItemStream';
 import {
   WISHLIST_PRIORITY_R2_CONFIG,
-  WISHLIST_SOURCE_CONFIG,
   WISHLIST_STATUS_R2_CONFIG,
   TARGETING_HINT_TYPE_CONFIG,
   type TargetingHint,
@@ -61,6 +60,19 @@ function isInternal(role: UserRole): boolean {
 
 function canWrite(role: UserRole): boolean {
   return role !== 'client-viewer';
+}
+
+/**
+ * The Website field is stored as the user typed it (spec §2.2 — no
+ * server-side normalisation beyond well-formedness). Users routinely
+ * enter `acme.com` rather than `https://acme.com`. When we render the
+ * link we add a synthetic `https://` scheme if missing so the
+ * `<a href>` actually leaves the app rather than appending to the
+ * current page.
+ */
+function ensureScheme(url: string): string {
+  const trimmed = url.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
 export default function WishlistDrawer({
@@ -148,12 +160,8 @@ export default function WishlistDrawer({
               >
                 {priorityCfg.label}
               </span>
-              {entry.source && (
-                <span className="text-gray-500">
-                  Source: {WISHLIST_SOURCE_CONFIG[entry.source].label}
-                  {entry.sourceDetail ? ` · ${entry.sourceDetail}` : ''}
-                </span>
-              )}
+              {/* Source pill removed in v0.2 (spec §2.1). Provenance is in the
+                  Audit section below; intent belongs in Discussion. */}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -350,7 +358,39 @@ function DetailsView({
             Candidate (not yet resolved to a Salesforce Account)
           </div>
         )}
+        {/* Website — v0.2 §2.2. Rendered as a link when set; the Edit
+            affordance is the section-level Edit button on the parent
+            DetailsView, so we don't render an inline edit pencil here. */}
+        {entry.website && (
+          <div className="text-xs mt-1.5 inline-flex items-center gap-1">
+            <Globe className="w-3 h-3 text-gray-400" />
+            <a
+              href={ensureScheme(entry.website)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-700 hover:underline truncate max-w-[28ch]"
+              title={entry.website}
+            >
+              {entry.website}
+            </a>
+          </div>
+        )}
       </Section>
+
+      {/* Research Assistant context — v0.2 §2.3. Internal-only display. */}
+      {internal && (
+        <Section label="Research Assistant context">
+          {entry.researchAssistantContext ? (
+            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              {entry.researchAssistantContext}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400">
+              No context set. Reserved for future Research Assistant integration.
+            </span>
+          )}
+        </Section>
+      )}
 
       {/* Campaigns — internal only */}
       {internal && (

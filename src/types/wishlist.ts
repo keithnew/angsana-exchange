@@ -37,8 +37,18 @@ export interface TargetingHint {
   displayName: string;
 }
 
-/** Provenance of a wishlist entry. */
+/**
+ * Provenance of a wishlist entry.
+ *
+ * v0.2 (per `docs/architecture/r2-pvs-s1-wishlists-v0_2-spec.md` §3): the
+ * Source field is no longer surfaced in the UI; the column is retained for
+ * supersession discipline (Capabilities and API Surface Note v0.2 §1.4).
+ * New UI-driven creates default to `'unspecified'`. System processes — the
+ * reseed itself, future RA integration, future bulk import — may still
+ * write any enum value.
+ */
 export type WishlistSource =
+  | 'unspecified'
   | 'client-request'
   | 'internal-research'
   | 'conference-list'
@@ -82,6 +92,15 @@ export interface WishlistEntry {
   source: WishlistSource;
   sourceDetail: string | null;
 
+  // Identifying URL — added in v0.2 slice (spec §2.2 / §3). Optional;
+  // free-form URL string. Empty string means unset.
+  website: string | null;
+
+  // Internal-only context for the Research Assistant integration —
+  // reserved field added in v0.2 slice (spec §2.3 / §3). Free-form text;
+  // not surfaced to client-tenant users; not consumed by RA in this slice.
+  researchAssistantContext: string | null;
+
   // Audit (server times when read via Admin; ISO strings when serialised to client).
   addedBy: { uid: string; name: string };
   addedAt: Timestamp | string;
@@ -91,9 +110,23 @@ export interface WishlistEntry {
   // Lifecycle
   archived: boolean;
 
-  // Schema version marker (added by R2 migration; absent on legacy R1 docs).
-  schemaVersion?: 'r2-pvs-wishlist-v1';
+  /**
+   * Schema version marker (per Reseed Pattern v0.1 §3.3).
+   *   - `r2-pvs-wishlist-v1` — original R2 shape from Slice 1 migration.
+   *   - `r2-pvs-wishlist-v2` — v0.2 slice shape (adds website,
+   *     researchAssistantContext; adds 'unspecified' to source enum;
+   *     UI no longer collects source/sourceDetail).
+   *   - absent — legacy R1 doc, lifted on the fly by the read adapter.
+   */
+  schemaVersion?: 'r2-pvs-wishlist-v1' | 'r2-pvs-wishlist-v2';
 }
+
+/**
+ * The schemaVersion marker written by the v0.2 reseed (Reseed Pattern §3.3).
+ * Reseeded documents carry this marker; new documents created via the API
+ * post-deploy carry it too.
+ */
+export const WISHLIST_SCHEMA_VERSION_V2 = 'r2-pvs-wishlist-v2' as const;
 
 /**
  * Wire-shape variant of WishlistEntry. All Firestore Timestamps are ISO
@@ -113,6 +146,31 @@ export interface WishlistEntryWire extends Omit<WishlistEntry, 'addedAt' | 'upda
    * pill in the table (spec §11). Null when no open items.
    */
   openItemHighestPriority?: 'high' | 'medium' | 'low' | null;
+
+  // ─── Discussion-presence indicator (v0.2 §2.4) ─────────────────────────
+  // The Open Items pill above tells us "how many things are still open".
+  // The discussion-presence indicator answers a different question: "is
+  // there *any* substantive discussion attached, including recently-closed
+  // items?". The two signals overlap but aren't redundant — a wishlist
+  // with no open items but a Work Item closed yesterday should still
+  // light up so a returning user notices the conversation happened.
+  // Computed by `lib/workItems/discussionPresence.ts`. All fields are
+  // optional on the wire (older surfaces don't populate them).
+
+  /** True when the entity has at least one open Work Item. */
+  hasOpenDiscussion?: boolean;
+  /**
+   * Count of Work Items updated within the recency window (default 7 days,
+   * internal config — see `DEFAULT_RECENCY_WINDOW_DAYS`). Includes both
+   * open and recently-closed items. Surfaced in the indicator's tooltip.
+   */
+  recentlyUpdatedDiscussionCount?: number;
+  /**
+   * ISO-8601 timestamp of the most recent Work Item update for this
+   * entity. Null when no Work Items are attached. Drives the "last
+   * update: 2 days ago" tooltip line.
+   */
+  mostRecentDiscussionUpdateAt?: string | null;
 }
 
 // ─── Display configuration ──────────────────────────────────────────────────
@@ -136,7 +194,15 @@ export const WISHLIST_PRIORITY_R2_CONFIG: Record<
   low: { label: 'Low', colour: '#6B7280', bgColour: '#F3F4F6' },
 };
 
+/**
+ * Display labels for the source enum. Retained alongside the schema column
+ * for any system-side surface that still inspects source (none in the v0.2
+ * UI — the field was removed per spec §2.1). The `'unspecified'` label is
+ * the post-deploy default written by the API when no caller supplies a
+ * value (spec §3 "On source values across the lifecycle").
+ */
 export const WISHLIST_SOURCE_CONFIG: Record<WishlistSource, { label: string }> = {
+  unspecified: { label: 'Unspecified' },
   'client-request': { label: 'Client request' },
   'internal-research': { label: 'Internal research' },
   'conference-list': { label: 'Conference list' },

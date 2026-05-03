@@ -43,4 +43,9 @@ next-env.d.ts
 # data and must not enter version control.
 /migrations/
 
+# reseeds — log files are operator-local artefacts (per Angsana Reseed
+# Pattern v0.1 §3.2). Same discipline as migrations: tenant data, never
+# committed.
+/reseeds/
+
 firebase-debug.log

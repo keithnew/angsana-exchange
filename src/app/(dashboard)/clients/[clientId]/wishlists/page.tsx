@@ -20,6 +20,7 @@ import WishlistListClient from './WishlistListClient';
 import { PagePadding } from '@/components/layout/PagePadding';
 import { readWishlistEntry, type RawWishlistDoc } from '@/lib/wishlists/readAdapter';
 import { computeOpenItemCounts } from '@/lib/workItems/openItemCounts';
+import { computeDiscussionPresence } from '@/lib/workItems/discussionPresence';
 import {
   TARGETING_HINT_TYPE_CONFIG,
   TARGETING_HINT_TYPES,
@@ -124,21 +125,37 @@ export default async function WishlistsPage({ params }: Props) {
       };
     });
 
-  // ─── Open-item counts ──────────────────────────────────────────────
-  // Resolve at the page so the table renders the Open Items pill on first paint.
-  const buckets = await computeOpenItemCounts({
-    tenantId,
-    clientId,
-    subjectEntityType: 'wishlist',
-    hideInternal: !isInternal,
-  });
+  // ─── Open-item counts + discussion presence ────────────────────────
+  // Resolved server-side so the table renders both signals on first paint.
+  // The two helpers walk the same collection but bucket on different
+  // predicates (open-only vs. open OR recently-updated) — see
+  // `lib/workItems/discussionPresence.ts` header for why they're split.
+  // We run them in parallel; at Cegid-Spain volume each is sub-100ms.
+  const [buckets, discussionBuckets] = await Promise.all([
+    computeOpenItemCounts({
+      tenantId,
+      clientId,
+      subjectEntityType: 'wishlist',
+      hideInternal: !isInternal,
+    }),
+    computeDiscussionPresence({
+      tenantId,
+      clientId,
+      subjectEntityType: 'wishlist',
+      hideInternal: !isInternal,
+    }),
+  ]);
 
   const wishlistsWithCounts: WishlistEntryWire[] = wishlists.map((w) => {
     const b = buckets.get(w.wishlistId);
+    const d = discussionBuckets.get(w.wishlistId);
     return {
       ...w,
       openItemCount: b?.count ?? 0,
       openItemHighestPriority: b?.highestPriority ?? null,
+      hasOpenDiscussion: d?.hasOpenItem ?? false,
+      recentlyUpdatedDiscussionCount: d?.recentlyUpdatedCount ?? 0,
+      mostRecentDiscussionUpdateAt: d?.mostRecentUpdateAt ?? null,
     };
   });
 

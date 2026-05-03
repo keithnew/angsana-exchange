@@ -53,6 +53,7 @@ const VALID_STATUSES: WishlistStatus[] = [
   'rejected',
 ];
 const VALID_SOURCES: WishlistSource[] = [
+  'unspecified',
   'client-request',
   'internal-research',
   'conference-list',
@@ -61,6 +62,26 @@ const VALID_SOURCES: WishlistSource[] = [
   'migration',
   'other',
 ];
+
+/**
+ * URL well-formedness check matching the POST route. Empty string permitted.
+ * See `route.ts` (POST) for rationale on accepting scheme-less hosts.
+ */
+function isWellFormedUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  try {
+    new URL(trimmed);
+    return true;
+  } catch {
+    try {
+      new URL(`https://${trimmed}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -131,6 +152,13 @@ interface UpdateInput {
   targetingHints?: TargetingHint[];
   source?: WishlistSource;
   sourceDetail?: string | null;
+  /** v0.2 — optional URL string. Pass empty string to clear. */
+  website?: string | null;
+  /**
+   * v0.2 — optional internal-only field. Field-gated below; client-tenant
+   * callers' supplies are dropped.
+   */
+  researchAssistantContext?: string | null;
 }
 
 function validateUpdate(input: UpdateInput): string | null {
@@ -155,6 +183,27 @@ function validateUpdate(input: UpdateInput): string | null {
   }
   if (input.targetingHints && input.targetingHints.length > 12) {
     return 'targetingHints must be ≤12.';
+  }
+  if (
+    input.website !== undefined &&
+    input.website !== null &&
+    !isWellFormedUrl(input.website)
+  ) {
+    return 'website must be a parseable URL (or empty).';
+  }
+  if (
+    input.website !== undefined &&
+    input.website !== null &&
+    input.website.length > 500
+  ) {
+    return 'website must be ≤500 chars.';
+  }
+  if (
+    input.researchAssistantContext !== undefined &&
+    input.researchAssistantContext !== null &&
+    input.researchAssistantContext.length > 2000
+  ) {
+    return 'researchAssistantContext must be ≤2000 chars.';
   }
   return null;
 }
@@ -189,7 +238,16 @@ export async function PUT(request: NextRequest, { params }: WishlistRouteCtx) {
     return NextResponse.json({ error: validationErr }, { status: 400 });
   }
 
-  // Field gating: client-approver may not change status or campaignRefs.
+  // Field gating per spec §2.1–§2.3 + §3.6:
+  //   • source / sourceDetail are no longer collected by the UI but the
+  //     PUT route still accepts them so internal scripts (or a future
+  //     internal admin tool) can set them. They remain in `clientAllowed`
+  //     for backward compatibility with any client-tenant write that
+  //     happens to pass the (no longer surfaced) value — accepting it is
+  //     harmless and the form is what stops it being sent.
+  //   • website is editable by anyone with write access (spec §2.2).
+  //   • researchAssistantContext is internal-only (spec §2.3).
+  //   • status / campaignRefs are internal-only (existing v0.1 rule).
   const internal = isInternal(user);
   const clientAllowed: (keyof UpdateInput)[] = [
     'companyName',
@@ -198,11 +256,13 @@ export async function PUT(request: NextRequest, { params }: WishlistRouteCtx) {
     'targetingHints',
     'source',
     'sourceDetail',
+    'website',
   ];
   const internalAllowed: (keyof UpdateInput)[] = [
     ...clientAllowed,
     'status',
     'campaignRefs',
+    'researchAssistantContext',
   ];
   const allowed: Set<keyof UpdateInput> = new Set(internal ? internalAllowed : clientAllowed);
 
@@ -221,6 +281,19 @@ export async function PUT(request: NextRequest, { params }: WishlistRouteCtx) {
   // companyName trim + denormalise.
   if (typeof update.companyName === 'string') {
     update.companyName = (update.companyName as string).trim() || null;
+  }
+
+  // v0.2 — normalise website / RAC. Empty strings collapse to null so that
+  // "field unset" has a single canonical representation; explicit null is
+  // also honoured (i.e. the caller wants to clear the field).
+  if (update.website !== undefined) {
+    const w = update.website;
+    update.website = typeof w === 'string' && w.trim() ? w.trim() : null;
+  }
+  if (update.researchAssistantContext !== undefined) {
+    const r = update.researchAssistantContext;
+    update.researchAssistantContext =
+      typeof r === 'string' && r.trim() ? r.trim() : null;
   }
 
   update.updatedBy = toActor(user);

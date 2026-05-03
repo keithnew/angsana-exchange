@@ -14,6 +14,13 @@
 > alongside the slice spec it governs so that the implementation reference is
 > grounded in the repo. The authoritative copy lives at LGaaS level.
 
+> **Amendment notice (April 2026):** see
+> `Angsana_Migration_Pattern_v0_1_Amendment_Threat_Model_and_Era.md` for the
+> §0 Threat-Model-and-Era framing inserted at the front of this document. The
+> amendment introduces the per-component era trigger and names
+> `Angsana_Reseed_Pattern_v0_1.md` as the lightweight sibling pattern for the
+> seed-data era. The body of v0.1 below is unchanged by the amendment.
+
 ---
 
 ## 1. What this document is

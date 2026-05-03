@@ -29,6 +29,7 @@ import { readWishlistEntry, type RawWishlistDoc } from '@/lib/wishlists/readAdap
 import { computeOpenItemCounts } from '@/lib/workItems/openItemCounts';
 import {
   SOURCES_REQUIRING_DETAIL,
+  WISHLIST_SCHEMA_VERSION_V2,
   type CompanyRef,
   type TargetingHint,
   type WishlistEntryWire,
@@ -46,6 +47,7 @@ const VALID_STATUSES: WishlistStatus[] = [
   'rejected',
 ];
 const VALID_SOURCES: WishlistSource[] = [
+  'unspecified',
   'client-request',
   'internal-research',
   'conference-list',
@@ -54,6 +56,33 @@ const VALID_SOURCES: WishlistSource[] = [
   'migration',
   'other',
 ];
+
+/**
+ * Lightweight URL well-formedness check for the v0.2 Website field.
+ * Per spec §2.2 we don't validate beyond parseability — empty is valid;
+ * a string that doesn't parse as a URL (with or without scheme) is rejected.
+ *
+ * Accepting both `https://acme.com` and `acme.com` is deliberate — the AM
+ * may paste either; the spec treats this as a free-form URL string and the
+ * server is not the place to be opinionated about scheme.
+ */
+function isWellFormedUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  try {
+    new URL(trimmed);
+    return true;
+  } catch {
+    // Allow scheme-less hosts like "acme.com" by retrying with a synthetic scheme.
+    try {
+      new URL(`https://${trimmed}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +154,14 @@ interface CreateWishlistInput {
   targetingHints?: TargetingHint[];
   source?: WishlistSource;
   sourceDetail?: string;
+  /** v0.2 — optional URL string. */
+  website?: string;
+  /**
+   * v0.2 — optional internal-only context for the RA integration. Quietly
+   * ignored when supplied by a client-tenant user (defence in depth; the
+   * UI doesn't expose the field).
+   */
+  researchAssistantContext?: string;
 }
 
 function validateCreateInput(input: CreateWishlistInput): string | null {
@@ -153,6 +190,18 @@ function validateCreateInput(input: CreateWishlistInput): string | null {
   }
   if (input.targetingHints && input.targetingHints.length > 12) {
     return 'targetingHints must be ≤12.';
+  }
+  if (input.website !== undefined && !isWellFormedUrl(input.website)) {
+    return 'website must be a parseable URL (or empty).';
+  }
+  if (input.website !== undefined && input.website.length > 500) {
+    return 'website must be ≤500 chars.';
+  }
+  if (
+    input.researchAssistantContext !== undefined &&
+    input.researchAssistantContext.length > 2000
+  ) {
+    return 'researchAssistantContext must be ≤2000 chars.';
   }
   return null;
 }
@@ -217,6 +266,26 @@ export async function POST(
     const status: WishlistStatus = internal ? (item.status ?? 'new') : 'new';
     const campaignRefs = internal ? (item.campaignRefs ?? []) : [];
 
+    // Per spec §2.1 / §3 "On source values across the lifecycle":
+    // brand-new entries created via the UI carry source = 'unspecified'
+    // unless an internal caller explicitly passes one. The form no longer
+    // collects source; sourceDetail is therefore unused for new entries.
+    const source: WishlistSource = item.source ?? 'unspecified';
+    const sourceDetail = item.sourceDetail?.trim() || null;
+
+    // v0.2 fields. Empty string normalises to null so that read-time
+    // equality checks ("is anything set?") have one true representation.
+    const websiteValue: string | null = item.website?.trim()
+      ? item.website.trim()
+      : null;
+    // researchAssistantContext is internal-only — silently dropped if a
+    // client-tenant caller supplies it (the UI doesn't expose it; this is
+    // defence in depth).
+    const racValue: string | null =
+      internal && item.researchAssistantContext?.trim()
+        ? item.researchAssistantContext.trim()
+        : null;
+
     const newDoc = {
       companyRef,
       companyName: trimmedName,
@@ -225,14 +294,18 @@ export async function POST(
       campaignRefs,
       targetingHints: item.targetingHints ?? [],
       targetingHintsRaw: null, // form-mediated entries don't carry raw blob
-      source: item.source ?? 'internal-research',
-      sourceDetail: item.sourceDetail?.trim() || null,
+      source,
+      sourceDetail,
+      website: websiteValue,
+      researchAssistantContext: racValue,
       addedBy: actor,
       addedAt: FieldValue.serverTimestamp(),
       updatedBy: actor,
       updatedAt: FieldValue.serverTimestamp(),
       archived: false,
-      schemaVersion: 'r2-pvs-wishlist-v1' as const,
+      // New entries carry the v0.2 marker straight away — they're already
+      // in the new shape, so the reseed will treat them as no-ops.
+      schemaVersion: WISHLIST_SCHEMA_VERSION_V2,
     };
 
     const docRef = await adminDb

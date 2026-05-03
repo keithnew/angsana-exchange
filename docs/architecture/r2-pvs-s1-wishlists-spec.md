@@ -17,6 +17,16 @@
 >
 > See `r2-pvs-s1-wishlists-build-notes.md` for the implementation pass build
 > log and decisions taken during construction.
+>
+> **Partially superseded by `r2-pvs-s1-wishlists-v0_2-spec.md` (May 2026).**
+> The v0.2 slice is additive on the live surface and overrides this v0.1
+> spec on the following points: (a) the Source field is removed from the
+> create form and detail view (§5 here); (b) `website` and
+> `researchAssistantContext` fields are added to the schema (§3 here);
+> (c) the schemaVersion marker is bumped to `r2-pvs-wishlist-v2`; (d) the
+> list view now carries a discussion-presence indicator. All other
+> sections of this v0.1 spec remain authoritative. The supersession
+> trail is recorded in `r2-pvs-s1-wishlists-changelog.md`.
 
 ---
 

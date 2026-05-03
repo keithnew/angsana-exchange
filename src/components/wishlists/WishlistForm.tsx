@@ -1,21 +1,29 @@
 'use client';
 
 // =============================================================================
-// WishlistForm — R2 schema (per spec §3, §7).
+// WishlistForm — R2 schema (per spec §3, §7), v0.2 slice updates per
+// docs/architecture/r2-pvs-s1-wishlists-v0_2-spec.md.
 //
 // Two modes:
 //   - mode="create" — POSTs to /api/clients/{clientId}/wishlists
 //   - mode="edit"   — PUTs   to /api/clients/{clientId}/wishlists/{wishlistId}
 //
-// Field set (R2):
+// Field set (post-v0.2):
 //   • Company (companyName + companyRef.type='candidate' on create, since
 //     SF Account match resolution lands with Refinery integration — spec §3.1)
+//   • Website (free-form URL, optional — v0.2 §2.2)
 //   • Priority  (high/medium/low)
 //   • Status    (visible only to internal users — spec §3.6)
-//   • Source    (with conditional sourceDetail when source ∈ {conference-list,
-//     industry-event, other} — spec §3.5)
 //   • Targeting hints (controlled vocabulary picker — spec §3.4 + §7.2)
 //   • Campaigns (pill picker; internal-only — spec §3.6)
+//   • Research Assistant context (internal-only free text — v0.2 §2.3,
+//     reserved for future RA integration; not consumed yet)
+//
+// REMOVED in v0.2:
+//   • Source dropdown — see v0.2 spec §2.1. Schema column retained per
+//     supersession discipline; the API now defaults new entries to
+//     'unspecified'. Existing source values on edited entries are
+//     preserved untouched (the form simply doesn't send the field).
 //
 // `availableTargetingHints`, `availableCampaigns`, `currentUserRole` are
 // passed in from the parent — this form does not fetch reference data on
@@ -28,17 +36,14 @@
 
 import { useState, useMemo } from 'react';
 import {
-  SOURCES_REQUIRING_DETAIL,
   TARGETING_HINT_TYPE_CONFIG,
   TARGETING_HINT_TYPES,
   WISHLIST_PRIORITY_R2_CONFIG,
-  WISHLIST_SOURCE_CONFIG,
   WISHLIST_STATUS_R2_CONFIG,
   type CompanyRef,
   type TargetingHint,
   type WishlistEntryWire,
   type WishlistPriority,
-  type WishlistSource,
   type WishlistStatus,
 } from '@/types/wishlist';
 
@@ -76,34 +81,57 @@ export interface WishlistFormProps {
 
 interface FormState {
   companyName: string;
+  /** v0.2 §2.2 — free-form URL string. Empty means unset. */
+  website: string;
   priority: WishlistPriority;
   status: WishlistStatus;
-  source: WishlistSource;
-  sourceDetail: string;
   targetingHints: TargetingHint[];
   campaignRefs: string[];
+  /** v0.2 §2.3 — internal-only free-text. Empty means unset. */
+  researchAssistantContext: string;
 }
 
 const EMPTY_STATE: FormState = {
   companyName: '',
+  website: '',
   priority: 'medium',
   status: 'new',
-  source: 'client-request',
-  sourceDetail: '',
   targetingHints: [],
   campaignRefs: [],
+  researchAssistantContext: '',
 };
 
 function fromEntry(e: WishlistEntryWire): FormState {
   return {
     companyName: e.companyName ?? '',
+    website: e.website ?? '',
     priority: e.priority,
     status: e.status,
-    source: e.source,
-    sourceDetail: e.sourceDetail ?? '',
     targetingHints: e.targetingHints ?? [],
     campaignRefs: e.campaignRefs ?? [],
+    researchAssistantContext: e.researchAssistantContext ?? '',
   };
+}
+
+/**
+ * Lightweight client-side URL well-formedness check, mirroring the API.
+ * Returns true for empty (treated as unset). The server is the source of
+ * truth — this is just so we can show inline feedback before submit.
+ */
+function isWellFormedUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  try {
+    new URL(trimmed);
+    return true;
+  } catch {
+    try {
+      new URL(`https://${trimmed}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -128,6 +156,9 @@ export function WishlistForm({
     currentUserRole === 'internal-admin' || currentUserRole === 'internal-user';
   const canEditStatus = isInternal;
   const canEditCampaignRefs = isInternal;
+  // v0.2 §2.3: researchAssistantContext is exposed in the form to internal
+  // users only. The server enforces the same rule (defence in depth).
+  const canEditResearchAssistantContext = isInternal;
 
   const hintsByType = useMemo(() => {
     const grouped: Record<TargetingHint['type'], TargetingHint[]> = {
@@ -140,16 +171,20 @@ export function WishlistForm({
     return grouped;
   }, [availableTargetingHints]);
 
-  const sourceRequiresDetail = SOURCES_REQUIRING_DETAIL.includes(state.source);
-
   // ─── Validation ──────────────────────────────────────────────────────
   function validate(): string | null {
     if (!state.companyName.trim()) return 'Company name is required.';
     if (state.companyName.length > 200) return 'Company name must be ≤200 characters.';
-    if (sourceRequiresDetail && !state.sourceDetail.trim()) {
-      return `Source detail is required when source is "${WISHLIST_SOURCE_CONFIG[state.source].label}".`;
+    if (state.website.trim() && !isWellFormedUrl(state.website)) {
+      return 'Website must be a parseable URL (or left empty).';
+    }
+    if (state.website.length > 500) {
+      return 'Website must be ≤500 characters.';
     }
     if (state.targetingHints.length > 12) return 'Maximum of 12 targeting hints.';
+    if (state.researchAssistantContext.length > 2000) {
+      return 'Research Assistant context must be ≤2000 characters.';
+    }
     return null;
   }
 
@@ -168,15 +203,23 @@ export function WishlistForm({
       // For create: the API creates a `companyRef: { type: 'candidate' }`
       // because SF resolution is a future slice. The wishlistForm doesn't
       // resolve the ref itself — the API does (spec §3.1).
+      //
+      // Per v0.2 spec §2.1, the form does NOT send `source`. The server
+      // defaults new entries to 'unspecified'; on edits the existing
+      // source value is preserved untouched because we omit the field
+      // from the PUT body.
       const payload: Record<string, unknown> = {
         companyName: state.companyName.trim(),
+        website: state.website.trim() || null,
         priority: state.priority,
-        source: state.source,
-        sourceDetail: sourceRequiresDetail ? state.sourceDetail.trim() : null,
         targetingHints: state.targetingHints,
       };
       if (canEditStatus) payload.status = state.status;
       if (canEditCampaignRefs) payload.campaignRefs = state.campaignRefs;
+      if (canEditResearchAssistantContext) {
+        payload.researchAssistantContext =
+          state.researchAssistantContext.trim() || null;
+      }
 
       // Preserve existing companyRef on edit; do not overwrite an existing
       // SF-resolved ref. The API uses `candidate` for any net-new company
@@ -236,6 +279,26 @@ export function WishlistForm({
         />
       </div>
 
+      {/* Website — v0.2 §2.2. Placed near the company-identifying fields per
+          spec; helps disambiguate companies sharing a name and improves the
+          downstream Salesforce match. */}
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          Website{' '}
+          <span className="text-xs text-gray-500 font-normal">
+            (optional — helps identify the right company)
+          </span>
+        </label>
+        <input
+          type="url"
+          value={state.website}
+          onChange={(e) => setState((s) => ({ ...s, website: e.target.value }))}
+          placeholder="e.g. https://acme.com"
+          className="w-full border rounded px-3 py-2"
+          maxLength={500}
+        />
+      </div>
+
       {/* Priority */}
       <div>
         <label className="block text-sm font-medium mb-1">Priority *</label>
@@ -281,39 +344,11 @@ export function WishlistForm({
         </div>
       )}
 
-      {/* Source */}
-      <div>
-        <label className="block text-sm font-medium mb-1">Source *</label>
-        <select
-          value={state.source}
-          onChange={(e) => setState((s) => ({ ...s, source: e.target.value as WishlistSource }))}
-          className="w-full border rounded px-3 py-2"
-        >
-          {(Object.keys(WISHLIST_SOURCE_CONFIG) as WishlistSource[]).map((src) => (
-            <option key={src} value={src}>
-              {WISHLIST_SOURCE_CONFIG[src].label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Source detail — conditional */}
-      {sourceRequiresDetail && (
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Source detail *{' '}
-            <span className="text-xs text-gray-500">(e.g. conference name, event name)</span>
-          </label>
-          <input
-            type="text"
-            value={state.sourceDetail}
-            onChange={(e) => setState((s) => ({ ...s, sourceDetail: e.target.value }))}
-            className="w-full border rounded px-3 py-2"
-            maxLength={200}
-            required
-          />
-        </div>
-      )}
+      {/* Source field intentionally omitted — see v0.2 spec §2.1.
+          Provenance is captured by addedBy/addedAt; intent goes in Discussion;
+          internal classifications (migration, ai-suggestion) are set by
+          system, not by user. New entries default to source='unspecified'
+          server-side. */}
 
       {/* Targeting hints */}
       <div>
@@ -377,6 +412,34 @@ export function WishlistForm({
           })}
         </div>
       </div>
+
+      {/* Research Assistant context — v0.2 §2.3. Internal-only. Reserved
+          field; not consumed by the RA pipeline yet. Surfaced now so the
+          data substrate is in place when the productisation answer lands. */}
+      {canEditResearchAssistantContext && (
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Research Assistant context{' '}
+            <span className="text-xs text-gray-500 font-normal">
+              (internal only — context for future RA queries)
+            </span>
+          </label>
+          <textarea
+            value={state.researchAssistantContext}
+            onChange={(e) =>
+              setState((s) => ({ ...s, researchAssistantContext: e.target.value }))
+            }
+            placeholder="e.g. focus on UK subsidiaries; prior interest in their oncology pipeline"
+            className="w-full border rounded px-3 py-2 text-sm"
+            rows={3}
+            maxLength={2000}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Reserved for future Research Assistant integration. Not visible to
+            client users.
+          </p>
+        </div>
+      )}
 
       {/* Campaigns — internal-only */}
       {canEditCampaignRefs && availableCampaigns.length > 0 && (

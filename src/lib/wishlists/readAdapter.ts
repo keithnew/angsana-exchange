@@ -53,8 +53,17 @@ const VALID_STATUSES: ReadonlySet<WishlistStatus> = new Set([
   'rejected',
 ]);
 
+/**
+ * Both v1 and v2 R2 documents share the same in-memory shape — the v0.2
+ * slice's additions (website, researchAssistantContext, 'unspecified'
+ * source value) are additive. The boolean here gates "is this an R1 doc
+ * that needs the legacy lift" rather than v1-vs-v2.
+ */
 function isR2(raw: RawWishlistDoc): boolean {
-  return raw.schemaVersion === 'r2-pvs-wishlist-v1';
+  return (
+    raw.schemaVersion === 'r2-pvs-wishlist-v1' ||
+    raw.schemaVersion === 'r2-pvs-wishlist-v2'
+  );
 }
 
 function normalisePriority(value: unknown): WishlistPriority {
@@ -126,12 +135,19 @@ export function readWishlistEntry(
       targetingHintsRaw: raw.targetingHintsRaw ?? null,
       source: raw.source ?? 'migration',
       sourceDetail: raw.sourceDetail ?? null,
+      // v0.2 fields. v1 docs (pre-reseed) won't have these set; null is the
+      // canonical empty value for both.
+      website: raw.website ?? null,
+      researchAssistantContext: raw.researchAssistantContext ?? null,
       addedBy: raw.addedBy ?? { uid: '', name: '' },
       addedAt: tsToISO(raw.addedAt as Timestamp | Date | string | undefined),
       updatedBy: raw.updatedBy ?? raw.addedBy ?? { uid: '', name: '' },
       updatedAt: tsToISO(raw.updatedAt as Timestamp | Date | string | undefined),
       archived: raw.archived ?? false,
-      schemaVersion: 'r2-pvs-wishlist-v1',
+      // Preserve the document's actual marker so v1 docs read back as v1
+      // (the page UI uses this to decide whether to show the "legacy doc"
+      // amber note in WishlistDrawer's Audit panel).
+      schemaVersion: raw.schemaVersion,
     };
   }
 
@@ -165,6 +181,11 @@ export function readWishlistEntry(
     targetingHintsRaw,
     source,
     sourceDetail: null,
+    // v0.2 fields are absent on R1 docs — populate as null (the canonical
+    // empty value). The reseed will write empty strings on the durable
+    // doc; read-time normalisation just keeps the shape consistent.
+    website: null,
+    researchAssistantContext: null,
     addedBy,
     addedAt: tsToISO(raw.addedDate ?? raw.addedAt),
     updatedBy: addedBy,
@@ -178,8 +199,12 @@ export function readWishlistEntry(
 /**
  * Heuristic: does this raw doc look like it was upgraded by the migration
  * script (i.e. has the R2 marker)? Used by GET handlers and migration
- * idempotency checks.
+ * idempotency checks. Accepts either v1 or v2 markers — both are
+ * considered "upgraded" past the R1 shape.
  */
 export function isUpgraded(raw: RawWishlistDoc): boolean {
-  return raw.schemaVersion === 'r2-pvs-wishlist-v1';
+  return (
+    raw.schemaVersion === 'r2-pvs-wishlist-v1' ||
+    raw.schemaVersion === 'r2-pvs-wishlist-v2'
+  );
 }

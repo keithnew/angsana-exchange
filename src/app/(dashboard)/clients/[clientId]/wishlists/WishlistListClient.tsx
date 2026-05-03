@@ -25,7 +25,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Inbox } from 'lucide-react';
+import { Plus, Inbox, MessageSquare } from 'lucide-react';
 import { WishlistForm } from '@/components/wishlists/WishlistForm';
 import WishlistDrawer from './WishlistDrawer';
 import {
@@ -349,14 +349,38 @@ function WishlistRow({
   const openCount = entry.openItemCount ?? 0;
   const openHi = entry.openItemHighestPriority ?? null;
 
+  // Discussion-presence indicator (v0.2 spec §2.4 / acceptance #4).
+  // Shown when there is *any* substantive discussion attached: an open
+  // Work Item, OR a Work Item updated within the recency window. The
+  // existing Open Items pill in its own column is a stricter signal —
+  // open-only — so the two can both light up on the same row without
+  // being redundant. The icon-only design is the glanceable form;
+  // hover reveals the count and last-update timestamp.
+  const hasOpenDiscussion = entry.hasOpenDiscussion ?? false;
+  const recentCount = entry.recentlyUpdatedDiscussionCount ?? 0;
+  const showDiscussionIndicator = hasOpenDiscussion || recentCount > 0;
+
   return (
     <tr
       className="hover:bg-blue-50/30 cursor-pointer"
       onClick={onOpenDetails}
     >
       <td className="px-3 py-2">
-        <div className="font-medium text-gray-900">
-          {entry.companyName ?? <span className="text-gray-400 italic">No company</span>}
+        <div className="flex items-center gap-1.5">
+          <div className="font-medium text-gray-900">
+            {entry.companyName ?? <span className="text-gray-400 italic">No company</span>}
+          </div>
+          {showDiscussionIndicator && (
+            <DiscussionPresenceIndicator
+              hasOpen={hasOpenDiscussion}
+              recentCount={recentCount}
+              mostRecentAt={entry.mostRecentDiscussionUpdateAt ?? null}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenDiscussion();
+              }}
+            />
+          )}
         </div>
         {entry.companyRef?.type === 'candidate' && (
           <div className="text-xs text-gray-400">candidate · unresolved</div>
@@ -464,6 +488,96 @@ function WishlistRow({
       </td>
     </tr>
   );
+}
+
+// ─── Discussion-presence indicator ──────────────────────────────────────────
+
+/**
+ * The visible part of the v0.2 §2.4 acceptance criterion. Glanceable —
+ * an icon with a small count badge — that opens the Discussion tab on
+ * click. Hover reveals the human-readable summary including the last
+ * update timestamp.
+ *
+ * Colouring rule:
+ *   • Has at least one open Work Item   → amber (active conversation)
+ *   • Closed, but recently updated only → grey-blue (recently noted,
+ *     nothing pending)
+ *
+ * The icon is `MessageSquare` rather than a generic dot because the
+ * surface uses "Discussion" as the verbatim tab label and we want the
+ * glance and the destination to share a visual identity.
+ */
+function DiscussionPresenceIndicator({
+  hasOpen,
+  recentCount,
+  mostRecentAt,
+  onClick,
+}: {
+  hasOpen: boolean;
+  recentCount: number;
+  mostRecentAt: string | null;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const colour = hasOpen ? '#D97706' : '#6B7280';
+  const bgColour = hasOpen ? '#FFFBEB' : '#F3F4F6';
+  const borderColour = hasOpen ? '#FED7AA' : '#E5E7EB';
+
+  const tooltip = buildDiscussionTooltip(hasOpen, recentCount, mostRecentAt);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      aria-label={tooltip}
+      className="inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs"
+      style={{ color: colour, backgroundColor: bgColour, borderColor: borderColour }}
+    >
+      <MessageSquare className="w-3 h-3" />
+      {recentCount > 0 && <span className="leading-none">{recentCount}</span>}
+    </button>
+  );
+}
+
+/**
+ * Build the hover/aria string for the indicator. Phrased so a screen
+ * reader and a hover both communicate the same thing in one line.
+ */
+function buildDiscussionTooltip(
+  hasOpen: boolean,
+  recentCount: number,
+  mostRecentAt: string | null
+): string {
+  const parts: string[] = [];
+  if (hasOpen) parts.push('Open discussion');
+  if (recentCount > 0) {
+    parts.push(
+      `${recentCount} recent update${recentCount === 1 ? '' : 's'}`
+    );
+  }
+  if (parts.length === 0) parts.push('Discussion');
+  if (mostRecentAt) {
+    parts.push(`last update ${formatRelativeTime(mostRecentAt)}`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * Compact relative-time formatter, intentionally local to this surface
+ * so we don't pull in a date-fns dependency for one tooltip. Mirrors
+ * the precision we already commit to elsewhere in the table (en-GB
+ * dates, no minute-precision in row text).
+ */
+function formatRelativeTime(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return new Date(iso).toLocaleDateString('en-GB');
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return minutes <= 1 ? 'just now' : `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString('en-GB');
 }
 
 function openItemPillStyle(p: 'high' | 'medium' | 'low' | null): React.CSSProperties {
