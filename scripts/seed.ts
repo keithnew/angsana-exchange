@@ -417,6 +417,12 @@ async function seedFirestore() {
     conflictedTherapyAreas: [],
     competitors: ['Oracle Retail', 'SAP', 'Shopify POS'],
     logoPath: null,
+    // Dimension Packs v0.1 §5.1 — flat list of pack IDs from the catalogue.
+    // Required (not nullable) so 'no packs' is explicit. Cegid is a B2B
+    // software vendor so the migration heuristic (Packs §6.1) would set
+    // tech-b2b; marketing-services is the empty-reserved pack carried
+    // by every Client for forward-compatibility.
+    packs: ['tech-b2b', 'marketing-services'],
     createdAt: now,
     updatedAt: now,
   }, { merge: true });
@@ -1244,6 +1250,11 @@ async function seedFirestore() {
     conflictedTherapyAreas: ["respiratory"],
     competitors: ['Twilio', 'Vonage', 'Bandwidth'],
     logoPath: null,
+    // Dimension Packs v0.1 §5.1 — Wavix carries healthcare work (therapy
+    // areas) and is itself a CCaaS/CPaaS B2B-tech vendor; the migration
+    // heuristic (Packs §6.1) would pick up both. Plus marketing-services
+    // for forward-compatibility.
+    packs: ['healthcare', 'tech-b2b', 'marketing-services'],
     createdAt: now,
     updatedAt: now,
   }, { merge: true });
