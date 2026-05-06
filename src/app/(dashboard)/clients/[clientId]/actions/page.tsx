@@ -1,20 +1,25 @@
+// =============================================================================
+// Action List Page — /clients/[clientId]/actions
+//
+// S3-code-P3 — rewritten in-place to consume action-lite Work Items.
+//
+// What changed vs P2:
+//   - Reads via `listActionLiteForClient` (cross-project core-prod
+//     Firestore) rather than the legacy
+//     tenants/{tenantId}/clients/{clientId}/actions subcollection.
+//   - Hands `ActionLiteWire[]` to `ActionListClient` (was: `Action[]`).
+//   - URL structure unchanged: `/clients/{clientId}/actions` and
+//     `/clients/{clientId}/actions/new` per pre-code Decision #5.
+// =============================================================================
+
 import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActionListClient } from './ActionListClient';
-import type { Action } from '@/types';
+import { listActionLiteForClient } from '@/lib/workItems/actionLitePersistence';
 import { PagePadding } from '@/components/layout/PagePadding';
 
-/**
- * Action List Page — /clients/[clientId]/actions
- *
- * Server component that:
- * 1. Verifies the user has access to this client
- * 2. Queries Firestore for actions
- * 3. Fetches campaign names for display
- * 4. Renders the ActionListClient component
- */
 export default async function ActionsPage({
   params,
 }: {
@@ -28,7 +33,7 @@ export default async function ActionsPage({
     redirect('/');
   }
 
-  // Fetch client name
+  // Client name (Exchange-side, unchanged from P2).
   const clientDoc = await adminDb
     .collection('tenants')
     .doc(tenantId)
@@ -40,34 +45,8 @@ export default async function ActionsPage({
     ? (clientDoc.data()?.name as string) || clientId
     : clientId;
 
-  // Fetch actions
-  const actionsSnapshot = await adminDb
-    .collection('tenants')
-    .doc(tenantId)
-    .collection('clients')
-    .doc(clientId)
-    .collection('actions')
-    .get();
-
-  const actions: Action[] = actionsSnapshot.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      title: data.title || '',
-      description: data.description || '',
-      assignedTo: data.assignedTo || '',
-      dueDate: data.dueDate?.toDate?.()?.toISOString() || '',
-      status: data.status || 'open',
-      priority: data.priority || 'medium',
-      source: data.source || { type: 'manual' },
-      relatedCampaign: data.relatedCampaign || '',
-      createdBy: data.createdBy || '',
-      createdAt: data.createdAt?.toDate?.()?.toISOString() || '',
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
-    };
-  });
-
-  // Fetch campaigns for name lookups
+  // Campaigns — used both for name lookup (display) AND for the
+  // campaign-subject query branch in `listActionLiteForClient`.
   const campaignsSnapshot = await adminDb
     .collection('tenants')
     .doc(tenantId)
@@ -81,39 +60,46 @@ export default async function ActionsPage({
     campaignName: doc.data().campaignName || doc.id,
   }));
 
+  const items = await listActionLiteForClient({
+    tenantId,
+    clientId,
+    campaignIds: campaigns.map((c) => c.id),
+  });
+
   const isInternal =
-    user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
+    user.claims.role === 'internal-admin' ||
+    user.claims.role === 'internal-user';
 
   return (
     <PagePadding>
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-[var(--foreground)]">
-            {clientName} — Actions
-          </h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {actions.length} action{actions.length !== 1 ? 's' : ''}
-          </p>
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-[var(--foreground)]">
+              {clientName} — Actions
+            </h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {items.length} action{items.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          {isInternal && (
+            <Link
+              href={`/clients/${clientId}/actions/new`}
+              className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+            >
+              + New Action
+            </Link>
+          )}
         </div>
 
-        {isInternal && (
-          <Link
-            href={`/clients/${clientId}/actions/new`}
-            className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
-          >
-            + New Action
-          </Link>
-        )}
+        <ActionListClient
+          items={items}
+          clientId={clientId}
+          campaigns={campaigns}
+          isInternal={isInternal}
+        />
       </div>
-
-      <ActionListClient
-        actions={actions}
-        clientId={clientId}
-        campaigns={campaigns}
-        isInternal={isInternal}
-      />
-    </div>
-      </PagePadding>
+    </PagePadding>
   );
 }

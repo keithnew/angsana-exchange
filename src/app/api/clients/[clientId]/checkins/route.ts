@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
+import { type ActionLitePriority } from '@/lib/workItems/actionLite';
+import { createActionLite } from '@/lib/workItems/actionLitePersistence';
+import { runCheckInAutoGen } from '@/lib/workItems/checkInAutoGen';
+
 /**
  * Helper: extract user claims from request headers (set by middleware).
  */
@@ -26,12 +30,44 @@ function isInternal(role: string): boolean {
   return role === 'internal-admin' || role === 'internal-user';
 }
 
-/**
- * POST /api/clients/[clientId]/checkins
- * Creates a new check-in with auto-action generation.
- * Only internal-user and internal-admin can create.
- * Uses Firestore batch write for atomicity.
- */
+// =============================================================================
+// POST /api/clients/[clientId]/checkins
+// =============================================================================
+//
+// S3-code-P3 — auto-action generation rewired to action-lite Work Items.
+//
+// What changed vs P2:
+//   - The decisions/next-steps loop no longer writes to
+//       tenants/{tenantId}/clients/{clientId}/actions/{actionId}
+//     on the angsana-exchange project (that collection is empty post-P2
+//     `--delete-old`, and is being retired in P4).
+//   - It now calls `createActionLite` (cross-project to angsana-core-prod)
+//     for each decision/next-step that has `createAction === true`.
+//     Same shape as the new Action UI POST and the S3-P2 reseed.
+//   - The check-in document's `generatedActionIds` field is renamed to
+//     `generatedWorkItemIds`. Old check-in docs from before P3 still
+//     carry `generatedActionIds` pointing to deleted-collection IDs;
+//     P3-time decision is to NOT migrate those crumbs because no
+//     consumer reads them (P1's forward-reference audit).
+//
+// Atomicity note:
+//   The P2 implementation used a single Firestore batch to commit the
+//   check-in doc + all generated Action docs atomically. That's no
+//   longer possible because the Action docs (action-lite Work Items)
+//   live on a different Firestore project. New shape:
+//     1. createActionLite per decision/next-step → collect Work Item IDs.
+//     2. Single check-in doc write referencing those IDs.
+//   If a Work Item write fails mid-loop, we abort with a 500 BEFORE
+//   writing the check-in. Pre-written Work Items become orphans the
+//   operator can clean up manually (the migrationSource shape isn't
+//   used for these; a future cleanup sweep could query by
+//   `source.ref` linking back to the check-in that was never persisted).
+//   For seed-data v0.1 traffic this is acceptable. Banked: a tighter
+//   atomicity guarantee (e.g. write check-in in `pending` state, flip
+//   on completion, sweep on failure) is the right answer if real
+//   user traffic hits this. Trigger: first paying client.
+// =============================================================================
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
@@ -111,102 +147,75 @@ export async function POST(
     .doc(clientId);
 
   const checkInsRef = clientRef.collection('checkIns');
-  const actionsRef = clientRef.collection('actions');
 
-  const batch = adminDb.batch();
-
-  // Create the check-in document reference
+  // Mint the check-in doc ref up-front so we can reference its ID on
+  // the action-lite source field.
   const checkInDocRef = checkInsRef.doc();
   const checkInId = checkInDocRef.id;
   const checkinDate = body.date;
 
-  // Collect action IDs to be generated
-  const generatedActionIds: string[] = [];
-  let actionCount = 0;
-
-  // Process decisions that should create actions
-  const validPriorities = ['high', 'medium', 'low'];
+  const validPriorities: ActionLitePriority[] = ['high', 'medium', 'low'];
+  function normalisePriority(p: unknown): ActionLitePriority {
+    if (typeof p === 'string' && (validPriorities as string[]).includes(p)) {
+      return p as ActionLitePriority;
+    }
+    return 'medium';
+  }
 
   const decisions = (body.decisions || []).map((d: { text: string; assignee?: string; dueDate?: string; priority?: string; createAction?: boolean }) => ({
     text: d.text,
     assignee: d.assignee || '',
     dueDate: d.dueDate || '',
-    priority: validPriorities.includes(d.priority || '') ? d.priority : 'medium',
+    priority: normalisePriority(d.priority),
     createAction: d.createAction !== false, // default true
   }));
 
-  for (const decision of decisions) {
-    if (decision.createAction && decision.text) {
-      const actionDocRef = actionsRef.doc();
-      generatedActionIds.push(actionDocRef.id);
-      actionCount++;
-
-      // Determine related campaign — inherit if exactly 1
-      const relatedCampaign = (body.relatedCampaigns || []).length === 1
-        ? body.relatedCampaigns[0]
-        : '';
-
-      // Default due date: 7 days from check-in date
-      const dueDate = decision.dueDate
-        ? new Date(decision.dueDate)
-        : new Date(new Date(checkinDate).getTime() + 7 * 24 * 60 * 60 * 1000);
-
-      batch.set(actionDocRef, {
-        title: decision.text,
-        description: '',
-        assignedTo: decision.assignee || user.email,
-        dueDate,
-        status: 'open',
-        priority: decision.priority || 'medium',
-        source: { type: 'checkin', ref: checkInId },
-        relatedCampaign,
-        createdBy: user.email,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-  }
-
-  // Process next steps that should create actions
   const nextSteps = (body.nextSteps || []).map((ns: { text: string; owner?: string; targetDate?: string; priority?: string; createAction?: boolean }) => ({
     text: ns.text,
     owner: ns.owner || '',
     targetDate: ns.targetDate || '',
-    priority: validPriorities.includes(ns.priority || '') ? ns.priority : 'medium',
+    priority: normalisePriority(ns.priority),
     createAction: ns.createAction !== false, // default true
   }));
 
-  for (const step of nextSteps) {
-    if (step.createAction && step.text) {
-      const actionDocRef = actionsRef.doc();
-      generatedActionIds.push(actionDocRef.id);
-      actionCount++;
+  // Determine related campaign — inherit if exactly 1 (legacy rule).
+  const inheritedCampaign =
+    (body.relatedCampaigns || []).length === 1
+      ? (body.relatedCampaigns as string[])[0]
+      : '';
 
-      const relatedCampaign = (body.relatedCampaigns || []).length === 1
-        ? body.relatedCampaigns[0]
-        : '';
-
-      const dueDate = step.targetDate
-        ? new Date(step.targetDate)
-        : new Date(new Date(checkinDate).getTime() + 7 * 24 * 60 * 60 * 1000);
-
-      batch.set(actionDocRef, {
-        title: step.text,
-        description: '',
-        assignedTo: step.owner || user.email,
-        dueDate,
-        status: 'open',
-        priority: step.priority || 'medium',
-        source: { type: 'checkin', ref: checkInId },
-        relatedCampaign,
-        createdBy: user.email,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
+  // Run the auto-generation loop (cross-project to angsana-core-prod via
+  // `createActionLite`). Pure helper at `lib/workItems/checkInAutoGen.ts`
+  // is unit-tested directly with an injected createWorkItem fake.
+  let generatedWorkItemIds: string[] = [];
+  let actionCount = 0;
+  try {
+    const out = await runCheckInAutoGen({
+      decisions,
+      nextSteps,
+      context: {
+        tenantId: user.tenantId,
+        clientId,
+        checkInId,
+        checkInDate: checkinDate,
+        inheritedCampaign,
+        actor: { userId: user.email || user.uid, tenantId: user.tenantId },
+      },
+      createWorkItem: createActionLite,
+    });
+    generatedWorkItemIds = out.workItemIds;
+    actionCount = out.count;
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: `Failed to auto-generate Work Items from check-in: ${(err as Error).message}`,
+        partialWorkItemIds: generatedWorkItemIds,
+      },
+      { status: 500 }
+    );
   }
 
-  // Build the check-in document
+  // Build the check-in document (now with `generatedWorkItemIds`).
   const checkInData: Record<string, unknown> = {
     date: new Date(body.date),
     type: body.type,
@@ -216,7 +225,11 @@ export async function POST(
     keyPoints: body.keyPoints,
     decisions,
     nextSteps,
-    generatedActionIds,
+    // Audit 2 decision (P3-time, see handover): rename — old field name
+    // `generatedActionIds` is dropped on new docs. Old check-in docs
+    // still carry the legacy field with stale (deleted-collection) IDs;
+    // no migration because no consumer reads them.
+    generatedWorkItemIds,
     createdBy: user.email,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -226,13 +239,10 @@ export async function POST(
     checkInData.nextCheckInDate = new Date(body.nextCheckInDate);
   }
 
-  batch.set(checkInDocRef, checkInData);
-
-  // Commit the batch — atomically creates check-in + all actions
-  await batch.commit();
+  await checkInDocRef.set(checkInData);
 
   return NextResponse.json(
-    { id: checkInId, actionCount, success: true },
+    { id: checkInId, actionCount, generatedWorkItemIds, success: true },
     { status: 201 }
   );
 }

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
+import { type ActionLitePriority } from '@/lib/workItems/actionLite';
+import { createActionLite } from '@/lib/workItems/actionLitePersistence';
+import { runCheckInAutoGen } from '@/lib/workItems/checkInAutoGen';
+
 /**
  * Helper: extract user claims from request headers (set by middleware).
  */
@@ -28,8 +32,18 @@ function isInternal(role: string): boolean {
 
 /**
  * PUT /api/clients/[clientId]/checkins/[checkInId]
- * Updates a check-in. New decisions with createAction can generate new actions.
- * Existing decisions that already generated actions are preserved (action text NOT updated).
+ *
+ * Updates a check-in. New decisions / next-steps with createAction can
+ * generate new action-lite Work Items. Existing entries that already
+ * have linked Work Items are preserved (text NOT updated).
+ *
+ * S3-code-P3 (mirrors checkins/route.ts header):
+ *   - New action-lite Work Items go to angsana-core-prod via
+ *     `createActionLite`.
+ *   - The check-in doc's `generatedActionIds` field is rewritten to
+ *     `generatedWorkItemIds` on every PUT — append new IDs, preserve
+ *     existing ones the doc already carries (whether under the new or
+ *     the legacy key, see migration block below).
  */
 export async function PUT(
   request: NextRequest,
@@ -77,93 +91,76 @@ export async function PUT(
     }
   }
 
-  const batch = adminDb.batch();
-  const actionsRef = clientRef.collection('actions');
-  const existingActionIds: string[] = currentData.generatedActionIds || [];
-  const newActionIds: string[] = [];
+  // Pre-existing IDs — read from BOTH keys for the cutover transition.
+  // After P3 deploys we write `generatedWorkItemIds`; pre-P3 docs
+  // carry `generatedActionIds` with stale (deleted-collection) IDs.
+  // We forward both into the new field on save so a post-P3 PUT to a
+  // pre-P3 doc cleans the legacy key in passing.
+  const existingWorkItemIds: string[] = [
+    ...((currentData.generatedWorkItemIds as string[]) ?? []),
+    ...((currentData.generatedActionIds as string[]) ?? []),
+  ];
+  let newWorkItemIds: string[] = [];
   let newActionCount = 0;
 
-  // Process new decisions that should create actions
-  // Only create actions for decisions that don't already have linked actions
-  if (body.decisions) {
-    const existingDecisionCount = (currentData.decisions || []).length;
-    for (let i = 0; i < body.decisions.length; i++) {
-      const decision = body.decisions[i];
-      // New decisions are those beyond the original count
-      if (i >= existingDecisionCount && decision.createAction && decision.text) {
-        const actionDocRef = actionsRef.doc();
-        newActionIds.push(actionDocRef.id);
-        newActionCount++;
-
-        const relatedCampaign = (body.relatedCampaigns || currentData.relatedCampaigns || []).length === 1
-          ? (body.relatedCampaigns || currentData.relatedCampaigns)[0]
-          : '';
-
-        const checkinDate = body.date || currentData.date?.toDate?.()?.toISOString() || new Date().toISOString();
-        const dueDate = decision.dueDate
-          ? new Date(decision.dueDate)
-          : new Date(new Date(checkinDate).getTime() + 7 * 24 * 60 * 60 * 1000);
-
-        const validPriorities = ['high', 'medium', 'low'];
-
-        batch.set(actionDocRef, {
-          title: decision.text,
-          description: '',
-          assignedTo: decision.assignee || user.email,
-          dueDate,
-          status: 'open',
-          priority: validPriorities.includes(decision.priority) ? decision.priority : 'medium',
-          source: { type: 'checkin', ref: checkInId },
-          relatedCampaign,
-          createdBy: user.email,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-    }
+  function inheritedCampaign(): string {
+    const merged = body.relatedCampaigns ?? currentData.relatedCampaigns ?? [];
+    return Array.isArray(merged) && merged.length === 1 ? (merged[0] as string) : '';
   }
 
-  // Process new next steps similarly
-  if (body.nextSteps) {
-    const existingStepCount = (currentData.nextSteps || []).length;
-    for (let i = 0; i < body.nextSteps.length; i++) {
-      const step = body.nextSteps[i];
-      if (i >= existingStepCount && step.createAction && step.text) {
-        const actionDocRef = actionsRef.doc();
-        newActionIds.push(actionDocRef.id);
-        newActionCount++;
-
-        const relatedCampaign = (body.relatedCampaigns || currentData.relatedCampaigns || []).length === 1
-          ? (body.relatedCampaigns || currentData.relatedCampaigns)[0]
-          : '';
-
-        const checkinDate = body.date || currentData.date?.toDate?.()?.toISOString() || new Date().toISOString();
-        const dueDate = step.targetDate
-          ? new Date(step.targetDate)
-          : new Date(new Date(checkinDate).getTime() + 7 * 24 * 60 * 60 * 1000);
-
-        const validPriorities = ['high', 'medium', 'low'];
-
-        batch.set(actionDocRef, {
-          title: step.text,
-          description: '',
-          assignedTo: step.owner || user.email,
-          dueDate,
-          status: 'open',
-          priority: validPriorities.includes(step.priority) ? step.priority : 'medium',
-          source: { type: 'checkin', ref: checkInId },
-          relatedCampaign,
-          createdBy: user.email,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-    }
+  function checkinDateString(): string {
+    if (body.date) return body.date as string;
+    const ts = currentData.date as { toDate?: () => Date } | undefined;
+    if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString();
+    return new Date().toISOString();
   }
 
-  // Build update
+  // Run the auto-generation loop in `newOnly` mode — only entries past
+  // the existing-count baseline get Work Items minted (preserves the
+  // P2 invariant that re-editing an existing decision/next-step doesn't
+  // duplicate its linked Work Item).
+  try {
+    const out = await runCheckInAutoGen({
+      decisions: body.decisions ?? [],
+      nextSteps: body.nextSteps ?? [],
+      context: {
+        tenantId: user.tenantId,
+        clientId,
+        checkInId,
+        checkInDate: checkinDateString(),
+        inheritedCampaign: inheritedCampaign(),
+        actor: { userId: user.email || user.uid, tenantId: user.tenantId },
+      },
+      createWorkItem: createActionLite,
+      newOnly: true,
+      existingDecisionCount: (currentData.decisions || []).length,
+      existingNextStepCount: (currentData.nextSteps || []).length,
+    });
+    newWorkItemIds = out.workItemIds;
+    newActionCount = out.count;
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: `Failed to auto-generate Work Items from check-in: ${(err as Error).message}`,
+        partialWorkItemIds: newWorkItemIds,
+      },
+      { status: 500 }
+    );
+  }
+
+  // Build update.
   const updateData: Record<string, unknown> = {};
-  const allowedFields = ['date', 'type', 'attendees', 'duration', 'relatedCampaigns', 'keyPoints', 'decisions', 'nextSteps', 'nextCheckInDate'];
+  const allowedFields = [
+    'date',
+    'type',
+    'attendees',
+    'duration',
+    'relatedCampaigns',
+    'keyPoints',
+    'decisions',
+    'nextSteps',
+    'nextCheckInDate',
+  ];
 
   for (const field of allowedFields) {
     if (body[field] !== undefined) {
@@ -175,11 +172,16 @@ export async function PUT(
     }
   }
 
-  updateData.generatedActionIds = [...existingActionIds, ...newActionIds];
+  updateData.generatedWorkItemIds = [...existingWorkItemIds, ...newWorkItemIds];
+  // Drop the legacy key explicitly when rewriting — Firestore `update`
+  // doesn't remove fields by omission. FieldValue.delete() is the right
+  // primitive.
+  if (currentData.generatedActionIds !== undefined) {
+    updateData.generatedActionIds = FieldValue.delete();
+  }
   updateData.updatedAt = FieldValue.serverTimestamp();
 
-  batch.update(checkInRef, updateData);
-  await batch.commit();
+  await checkInRef.update(updateData);
 
-  return NextResponse.json({ success: true, newActionCount });
+  return NextResponse.json({ success: true, newActionCount, newWorkItemIds });
 }

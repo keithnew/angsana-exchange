@@ -647,8 +647,16 @@ export interface CheckIn {
   nextSteps: CheckInNextStep[];
   /** Optional next check-in date (ISO string) */
   nextCheckInDate?: string;
-  /** IDs of actions generated from this check-in */
-  generatedActionIds: string[];
+  /**
+   * IDs of action-lite Work Items generated from this check-in.
+   *
+   * S3-code-P3 — renamed from `generatedActionIds` (P3-time decision per
+   * the P3 handover audit-2). Pre-P3 check-in docs may still carry the
+   * old key with stale (deleted-collection) IDs; the route handlers
+   * read from both keys on PUT and rewrite to the new key, dropping
+   * the legacy field via `FieldValue.delete()` in the same write.
+   */
+  generatedWorkItemIds: string[];
   /** Who recorded the check-in */
   createdBy: string;
   /** When it was recorded (ISO string) */

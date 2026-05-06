@@ -1,5 +1,20 @@
 'use client';
 
+// =============================================================================
+// ActionForm — create form, S3-code-P3 rewrite onto action-lite.
+//
+// POSTs to /api/clients/{clientId}/action-items (the new action-lite
+// endpoint) instead of the legacy /api/clients/{clientId}/actions.
+//
+// Field rename for parity with the action-lite shape:
+//   - "Description" → "Body"     (action-lite calls the long-text field
+//                                  `body`; legacy called it `description`)
+//   - "Due Date"    → "Deadline"  (Spec §7.1 vocabulary)
+//
+// Operationally the form looks the same as before; the wire change is
+// internal.
+// =============================================================================
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -7,6 +22,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { ActionLitePriority } from '@/lib/workItems/actionLite';
 
 interface ActionFormProps {
   clientId: string;
@@ -19,12 +35,12 @@ export function ActionForm({ clientId, clientName, campaigns }: ActionFormProps)
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Form state
+  // Form state.
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [body, setBody] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
+  const [deadline, setDeadline] = useState('');
+  const [priority, setPriority] = useState<ActionLitePriority>('medium');
   const [relatedCampaign, setRelatedCampaign] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
@@ -35,14 +51,14 @@ export function ActionForm({ clientId, clientName, campaigns }: ActionFormProps)
     try {
       const payload = {
         title,
-        description,
+        body,
         assignedTo,
-        dueDate,
+        deadline,
         priority,
         relatedCampaign,
       };
 
-      const res = await fetch(`/api/clients/${clientId}/actions`, {
+      const res = await fetch(`/api/clients/${clientId}/action-items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -71,7 +87,9 @@ export function ActionForm({ clientId, clientName, campaigns }: ActionFormProps)
         Back to {clientName} actions
       </Link>
 
-      <h1 className="mb-6 text-2xl font-bold text-[var(--foreground)]">New Action</h1>
+      <h1 className="mb-6 text-2xl font-bold text-[var(--foreground)]">
+        New Action
+      </h1>
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -93,56 +111,57 @@ export function ActionForm({ clientId, clientName, campaigns }: ActionFormProps)
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                maxLength={150}
+                maxLength={200}
                 required
                 placeholder="What needs to be done? Be specific."
               />
               <p className="mt-1 text-xs text-[var(--muted)]">
-                {150 - title.length} characters remaining
+                {200 - title.length} characters remaining
               </p>
             </div>
 
-            {/* Description */}
+            {/* Body */}
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
-                Description <span className="text-[var(--muted)] font-normal">(optional)</span>
+                Body{' '}
+                <span className="text-[var(--muted)] font-normal">(optional)</span>
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                maxLength={280}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                maxLength={2000}
                 placeholder="Additional context..."
-                rows={2}
+                rows={3}
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
               />
               <p className="mt-1 text-xs text-[var(--muted)]">
-                {280 - description.length} characters remaining
+                {2000 - body.length} characters remaining
               </p>
             </div>
 
-            {/* Assigned To */}
+            {/* Assigned To (free-text owner — matches legacy form). */}
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
-                Assigned To <span className="text-red-500">*</span>
+                Assigned To{' '}
+                <span className="text-[var(--muted)] font-normal">(optional)</span>
               </label>
               <Input
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
-                required
-                placeholder="Who is responsible?"
+                placeholder="Who is responsible? (email or name)"
               />
             </div>
 
-            {/* Due Date */}
+            {/* Deadline */}
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
-                Due Date <span className="text-red-500">*</span>
+                Deadline{' '}
+                <span className="text-[var(--muted)] font-normal">(optional)</span>
               </label>
               <Input
                 type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                required
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
               />
             </div>
 
@@ -153,7 +172,9 @@ export function ActionForm({ clientId, clientName, campaigns }: ActionFormProps)
               </label>
               <select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as 'high' | 'medium' | 'low')}
+                onChange={(e) =>
+                  setPriority(e.target.value as ActionLitePriority)
+                }
                 className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
               >
                 <option value="high">High</option>
@@ -162,10 +183,12 @@ export function ActionForm({ clientId, clientName, campaigns }: ActionFormProps)
               </select>
             </div>
 
-            {/* Related Campaign */}
+            {/* Related Campaign (drives the subject — non-empty → campaign,
+                empty → client). */}
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
-                Related Campaign <span className="text-[var(--muted)] font-normal">(optional)</span>
+                Related Campaign{' '}
+                <span className="text-[var(--muted)] font-normal">(optional)</span>
               </label>
               <select
                 value={relatedCampaign}

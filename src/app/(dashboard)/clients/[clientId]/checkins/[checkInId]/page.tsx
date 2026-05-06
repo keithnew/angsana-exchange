@@ -62,7 +62,11 @@ export default async function CheckInDetailPage({
       createAction: ns.createAction !== false,
     })),
     nextCheckInDate: data.nextCheckInDate?.toDate?.()?.toISOString() || undefined,
-    generatedActionIds: data.generatedActionIds || [],
+    // S3-P3: read from new key with legacy fallback so pre-P3 docs still surface counts.
+    generatedWorkItemIds:
+      (data.generatedWorkItemIds as string[]) ||
+      (data.generatedActionIds as string[]) ||
+      [],
     createdBy: data.createdBy || '',
     createdAt: data.createdAt?.toDate?.()?.toISOString() || '',
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
@@ -70,7 +74,7 @@ export default async function CheckInDetailPage({
 
   // Fetch linked actions
   const linkedActions: Action[] = [];
-  if (checkin.generatedActionIds.length > 0) {
+  if (checkin.generatedWorkItemIds.length > 0) {
     // Firestore `in` query supports up to 30 items — fine for check-in actions
     const actionsSnapshot = await clientRef
       .collection('actions')

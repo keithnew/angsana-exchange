@@ -72,7 +72,11 @@ export default async function CheckinsPage({
         createAction: ns.createAction !== false,
       })),
       nextCheckInDate: data.nextCheckInDate?.toDate?.()?.toISOString() || undefined,
-      generatedActionIds: data.generatedActionIds || [],
+      // S3-P3: read from new key with legacy fallback so pre-P3 docs still surface counts.
+      generatedWorkItemIds:
+        (data.generatedWorkItemIds as string[]) ||
+        (data.generatedActionIds as string[]) ||
+        [],
       createdBy: data.createdBy || '',
       createdAt: data.createdAt?.toDate?.()?.toISOString() || '',
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',

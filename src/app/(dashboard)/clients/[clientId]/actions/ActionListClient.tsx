@@ -1,15 +1,29 @@
 'use client';
 
+// =============================================================================
+// ActionListClient — list view, S3-code-P3 rewrite onto action-lite.
+//
+// Consumes ActionLiteWire[] (from
+// `lib/workItems/actionLite.ts`) instead of the legacy `Action[]`.
+// Status changes hit
+//   PATCH /api/clients/{clientId}/action-items/{workItemId}  body: {state}
+// instead of the legacy
+//   PATCH /api/clients/{clientId}/actions/{actionId}         body: {status}
+// =============================================================================
+
 import { useState } from 'react';
 import Link from 'next/link';
-import type { Action, ActionStatus, ActionPriority } from '@/types';
-import { ACTION_STATUS_CONFIG, ACTION_PRIORITY_CONFIG } from '@/types';
+import {
+  ACTION_LITE_STATE_CONFIG,
+  ACTION_LITE_PRIORITY_CONFIG,
+  type ActionLiteState,
+  type ActionLitePriority,
+  type ActionLiteWire,
+} from '@/lib/workItems/actionLite';
 
-// =============================================================================
-// Helpers
-// =============================================================================
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | null): string {
   if (!iso) return '—';
   try {
     return new Date(iso).toLocaleDateString('en-GB', {
@@ -22,50 +36,51 @@ function formatDate(iso: string): string {
   }
 }
 
-function isOverdue(dueDate: string, status: ActionStatus): boolean {
-  if (status === 'done') return false;
-  if (!dueDate) return false;
-  const due = new Date(dueDate);
+function isOverdue(deadline: string | null, state: ActionLiteState): boolean {
+  if (state === 'done') return false;
+  if (!deadline) return false;
+  const due = new Date(deadline);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return due < today;
 }
 
-// =============================================================================
-// Sub-components
-// =============================================================================
+// ─── Sub-components ─────────────────────────────────────────────────────────
 
-function StatusBadge({
-  status,
-  actionId,
+function StateBadge({
+  state,
+  workItemId,
   clientId,
   isInternal,
-  onStatusChange,
+  onStateChange,
 }: {
-  status: ActionStatus;
-  actionId: string;
+  state: ActionLiteState;
+  workItemId: string;
   clientId: string;
   isInternal: boolean;
-  onStatusChange: (actionId: string, newStatus: ActionStatus) => void;
+  onStateChange: (workItemId: string, newState: ActionLiteState) => void;
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const config = ACTION_STATUS_CONFIG[status];
+  const config = ACTION_LITE_STATE_CONFIG[state];
 
-  async function handleStatusChange(newStatus: ActionStatus) {
+  async function handleStateChange(newState: ActionLiteState) {
     setUpdating(true);
     setShowDropdown(false);
     try {
-      const res = await fetch(`/api/clients/${clientId}/actions/${actionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const res = await fetch(
+        `/api/clients/${clientId}/action-items/${workItemId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: newState }),
+        }
+      );
       if (res.ok) {
-        onStatusChange(actionId, newStatus);
+        onStateChange(workItemId, newState);
       }
     } catch {
-      // Silently fail — user can retry
+      // Silently fail — operator can retry.
     } finally {
       setUpdating(false);
     }
@@ -79,26 +94,31 @@ function StatusBadge({
         disabled={updating}
         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-opacity ${isInternal ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
         style={{ color: config.colour, backgroundColor: config.bgColour }}
-        title={isInternal ? 'Click to change status' : undefined}
+        title={isInternal ? 'Click to change state' : undefined}
       >
         {updating ? '...' : config.label}
       </button>
 
       {showDropdown && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)} />
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setShowDropdown(false)}
+          />
           <div className="absolute left-0 top-full z-20 mt-1 rounded-md border border-gray-200 bg-white shadow-lg">
-            {(Object.keys(ACTION_STATUS_CONFIG) as ActionStatus[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => handleStatusChange(s)}
-                className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 ${s === status ? 'font-bold' : ''}`}
-                style={{ color: ACTION_STATUS_CONFIG[s].colour }}
-              >
-                {ACTION_STATUS_CONFIG[s].label}
-              </button>
-            ))}
+            {(Object.keys(ACTION_LITE_STATE_CONFIG) as ActionLiteState[]).map(
+              (s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => handleStateChange(s)}
+                  className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 ${s === state ? 'font-bold' : ''}`}
+                  style={{ color: ACTION_LITE_STATE_CONFIG[s].colour }}
+                >
+                  {ACTION_LITE_STATE_CONFIG[s].label}
+                </button>
+              )
+            )}
           </div>
         </>
       )}
@@ -106,8 +126,8 @@ function StatusBadge({
   );
 }
 
-function PriorityBadge({ priority }: { priority: ActionPriority }) {
-  const config = ACTION_PRIORITY_CONFIG[priority];
+function PriorityBadge({ priority }: { priority: ActionLitePriority }) {
+  const config = ACTION_LITE_PRIORITY_CONFIG[priority];
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
@@ -118,35 +138,33 @@ function PriorityBadge({ priority }: { priority: ActionPriority }) {
   );
 }
 
-// =============================================================================
-// Filters
-// =============================================================================
+// ─── Filters ────────────────────────────────────────────────────────────────
 
-type StatusFilter = 'active' | 'all' | ActionStatus;
-type PriorityFilter = 'all' | ActionPriority;
+type StateFilter = 'active' | 'all' | ActionLiteState;
+type PriorityFilter = 'all' | ActionLitePriority;
 
-// =============================================================================
-// Main Component
-// =============================================================================
+// ─── Main ───────────────────────────────────────────────────────────────────
 
 export function ActionListClient({
-  actions: initialActions,
+  items: initialItems,
   clientId,
   campaigns,
   isInternal,
 }: {
-  actions: Action[];
+  items: ActionLiteWire[];
   clientId: string;
   campaigns: { id: string; campaignName: string }[];
   isInternal: boolean;
 }) {
-  const [actions, setActions] = useState(initialActions);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const [items, setItems] = useState(initialItems);
+  const [stateFilter, setStateFilter] = useState<StateFilter>('active');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
 
-  function handleStatusChange(actionId: string, newStatus: ActionStatus) {
-    setActions((prev) =>
-      prev.map((a) => (a.id === actionId ? { ...a, status: newStatus } : a))
+  function handleStateChange(workItemId: string, newState: ActionLiteState) {
+    setItems((prev) =>
+      prev.map((a) =>
+        a.workItemId === workItemId ? { ...a, state: newState } : a
+      )
     );
   }
 
@@ -156,23 +174,29 @@ export function ActionListClient({
     return campaign ? campaign.campaignName : campaignId;
   }
 
-  // Apply filters
-  let filtered = actions;
-  if (statusFilter === 'active') {
-    filtered = filtered.filter((a) => a.status !== 'done');
-  } else if (statusFilter !== 'all') {
-    filtered = filtered.filter((a) => a.status === statusFilter);
+  // Apply filters.
+  let filtered = items;
+  if (stateFilter === 'active') {
+    filtered = filtered.filter((a) => a.state !== 'done');
+  } else if (stateFilter !== 'all') {
+    filtered = filtered.filter((a) => a.state === stateFilter);
   }
   if (priorityFilter !== 'all') {
     filtered = filtered.filter((a) => a.priority === priorityFilter);
   }
 
-  // Sort: priority (high first), then due date (soonest first)
-  const priorityOrder: Record<ActionPriority, number> = { high: 0, medium: 1, low: 2 };
+  // Sort: priority (high first), then deadline (soonest first).
+  const priorityOrder: Record<ActionLitePriority, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
   filtered.sort((a, b) => {
     const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
     if (pDiff !== 0) return pDiff;
-    return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    const aDue = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+    const bDue = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+    return aDue - bDue;
   });
 
   return (
@@ -180,22 +204,26 @@ export function ActionListClient({
       {/* Filter bar */}
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-[var(--muted)]">Status:</span>
-          {(['active', 'all', 'open', 'in-progress', 'blocked', 'done'] as StatusFilter[]).map(
-            (s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  statusFilter === s
-                    ? 'bg-[var(--primary)] text-white'
-                    : 'bg-gray-100 text-[var(--muted)] hover:bg-gray-200'
-                }`}
-              >
-                {s === 'active' ? 'Active' : s === 'all' ? 'All' : ACTION_STATUS_CONFIG[s as ActionStatus]?.label || s}
-              </button>
-            )
-          )}
+          <span className="text-sm text-[var(--muted)]">State:</span>
+          {(
+            ['active', 'all', 'open', 'in-progress', 'blocked', 'done'] as StateFilter[]
+          ).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStateFilter(s)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                stateFilter === s
+                  ? 'bg-[var(--primary)] text-white'
+                  : 'bg-gray-100 text-[var(--muted)] hover:bg-gray-200'
+              }`}
+            >
+              {s === 'active'
+                ? 'Active'
+                : s === 'all'
+                  ? 'All'
+                  : ACTION_LITE_STATE_CONFIG[s as ActionLiteState]?.label || s}
+            </button>
+          ))}
         </div>
 
         <div className="flex items-center gap-2">
@@ -210,7 +238,9 @@ export function ActionListClient({
                   : 'bg-gray-100 text-[var(--muted)] hover:bg-gray-200'
               }`}
             >
-              {p === 'all' ? 'All' : ACTION_PRIORITY_CONFIG[p as ActionPriority]?.label || p}
+              {p === 'all'
+                ? 'All'
+                : ACTION_LITE_PRIORITY_CONFIG[p as ActionLitePriority]?.label || p}
             </button>
           ))}
         </div>
@@ -225,82 +255,73 @@ export function ActionListClient({
                 Title
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Status
+                State
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Assigned To
+                Owner
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Due Date
+                Deadline
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
                 Priority
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Campaign
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Source
+                Subject
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filtered.map((action) => {
-              const overdue = isOverdue(action.dueDate, action.status);
+            {filtered.map((item) => {
+              const overdue = isOverdue(item.deadline, item.state);
+              const subjectIsCampaign = item.subject?.entityType === 'campaign';
               return (
-                <tr key={action.id} className="transition-colors hover:bg-gray-50">
+                <tr
+                  key={item.workItemId}
+                  className="transition-colors hover:bg-gray-50"
+                >
                   <td className="px-6 py-4">
                     <span className="text-sm font-medium text-[var(--foreground)]">
-                      {action.title}
+                      {item.title}
                     </span>
-                    {action.description && (
+                    {item.body && (
                       <p className="mt-0.5 text-xs text-[var(--muted)] truncate max-w-xs">
-                        {action.description}
+                        {item.body}
                       </p>
                     )}
                   </td>
                   <td className="px-4 py-4">
-                    <StatusBadge
-                      status={action.status}
-                      actionId={action.id}
+                    <StateBadge
+                      state={item.state}
+                      workItemId={item.workItemId}
                       clientId={clientId}
                       isInternal={isInternal}
-                      onStatusChange={handleStatusChange}
+                      onStateChange={handleStateChange}
                     />
                   </td>
                   <td className="px-4 py-4 text-sm text-[var(--foreground)]">
-                    {action.assignedTo}
+                    {item.owner?.userId ?? '—'}
                   </td>
-                  <td className={`px-4 py-4 text-sm ${overdue ? 'text-red-600 font-medium' : 'text-[var(--muted)]'}`}>
-                    {formatDate(action.dueDate)}
+                  <td
+                    className={`px-4 py-4 text-sm ${overdue ? 'text-red-600 font-medium' : 'text-[var(--muted)]'}`}
+                  >
+                    {formatDate(item.deadline)}
                     {overdue && <span className="ml-1 text-xs">⚠</span>}
                   </td>
                   <td className="px-4 py-4">
-                    <PriorityBadge priority={action.priority} />
+                    <PriorityBadge priority={item.priority} />
                   </td>
                   <td className="px-4 py-4 text-sm text-[var(--muted)]">
-                    {action.relatedCampaign ? (
+                    {subjectIsCampaign ? (
                       <Link
-                        href={`/clients/${clientId}/campaigns/${action.relatedCampaign}`}
+                        href={`/clients/${clientId}/campaigns/${item.subject.entityId}`}
                         className="text-[var(--primary)] hover:underline truncate block max-w-[150px]"
-                        title={getCampaignName(action.relatedCampaign)}
+                        title={getCampaignName(item.subject.entityId)}
                       >
-                        {getCampaignName(action.relatedCampaign)}
+                        {getCampaignName(item.subject.entityId)}
                       </Link>
                     ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-sm text-[var(--muted)]">
-                    {action.source.type === 'checkin' && action.source.ref ? (
-                      <Link
-                        href={`/clients/${clientId}/checkins/${action.source.ref}`}
-                        className="text-[var(--primary)] hover:underline"
-                      >
-                        Check-in
-                      </Link>
-                    ) : (
-                      'Manual'
+                      'Client-level'
                     )}
                   </td>
                 </tr>
@@ -308,7 +329,10 @@ export function ActionListClient({
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-sm text-[var(--muted)]">
+                <td
+                  colSpan={6}
+                  className="px-6 py-12 text-center text-sm text-[var(--muted)]"
+                >
                   No actions match the selected filters.
                 </td>
               </tr>

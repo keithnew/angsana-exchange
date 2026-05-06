@@ -61,7 +61,11 @@ export default async function EditCheckinPage({
       createAction: ns.createAction !== false,
     })),
     nextCheckInDate: data.nextCheckInDate?.toDate?.()?.toISOString()?.split('T')[0] || undefined,
-    generatedActionIds: data.generatedActionIds || [],
+    // S3-P3: read from new key with legacy fallback so pre-P3 docs still surface counts.
+    generatedWorkItemIds:
+      (data.generatedWorkItemIds as string[]) ||
+      (data.generatedActionIds as string[]) ||
+      [],
     createdBy: data.createdBy || '',
     createdAt: data.createdAt?.toDate?.()?.toISOString() || '',
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
@@ -69,7 +73,7 @@ export default async function EditCheckinPage({
 
   // Fetch linked actions for read-only context on existing decisions
   const linkedActions: Action[] = [];
-  if (checkin.generatedActionIds.length > 0) {
+  if (checkin.generatedWorkItemIds.length > 0) {
     const actionsSnapshot = await clientRef
       .collection('actions')
       .where('source.ref', '==', checkInId)

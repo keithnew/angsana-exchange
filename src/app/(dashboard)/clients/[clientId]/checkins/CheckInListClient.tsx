@@ -161,9 +161,9 @@ export function CheckInListClient({
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  {checkin.generatedActionIds.length > 0 ? (
+                  {checkin.generatedWorkItemIds.length > 0 ? (
                     <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                      {checkin.generatedActionIds.length}
+                      {checkin.generatedWorkItemIds.length}
                     </span>
                   ) : (
                     <span className="text-sm text-[var(--muted)]">—</span>
