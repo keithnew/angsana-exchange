@@ -22,6 +22,8 @@
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';
+import { adminDb } from '@/lib/firebase/admin';
+import { Timestamp } from 'firebase-admin/firestore';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +92,46 @@ export interface PublishEventOptions {
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const COMPONENT_NAME = 'exchange-app';
+
+/**
+ * Per S3-pre-code Decision #8: always-on Firestore mirror for the v0.1
+ * substantive-edit verbs (linked-edit category, Spec §4.2). The mirror
+ * writes a canonical PlatformEvent shape to
+ * `tenants/{tenantId}/platformEvents/{eventId}` so Core's existing
+ * `processTenantEvent` Firestore trigger (HANDLER_MAP-routed) processes
+ * the event. Other verbs remain Cloud-Logging-only unless an opt-in
+ * `mirrorToFirestore: true` is supplied at the call site (forward-compat).
+ *
+ * Adding to this list:
+ *   1. Register the verb in
+ *      `angsana-core-prod-project/functions/src/config/eventRegistry.json`
+ *      with the appropriate handler key.
+ *   2. Add the verb here.
+ *   3. Land both repo changes in the same phase to avoid orphaned
+ *      Firestore docs in pending state.
+ */
+const FIRESTORE_MIRROR_WHITELIST: ReadonlySet<string> = new Set([
+  // §4.2 Wishlist substantive edits
+  'wishlist.added',
+  'wishlist.archived',
+  'wishlist.targetingHintsChanged',
+  'wishlist.websiteChanged',
+  // §4.2 Campaign substantive edits
+  'campaign.added',
+  'campaign.statusChanged',
+  'campaign.nameChanged',
+  'campaign.targetingHintsChanged',
+]);
+
+/**
+ * Default retention for mirrored events. Mirrors Core's
+ * `WORK_ITEM_DEFAULT_RETENTION_DAYS` (60 days) + 'processing' category
+ * default. The mirror's TTL field uses Firestore's existing TTL policy on
+ * the `platformEvents` collection.
+ */
+const MIRROR_RETENTION_DAYS = 60;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 
 function getEnvironmentName(): string {
   // Cloud Run convention: K_SERVICE / K_REVISION. Fall back to NODE_ENV.
@@ -197,15 +239,142 @@ export async function publishEvent(
     console.log(JSON.stringify(entry));
   }
 
-  // ── Optional Firestore mirror ──────────────────────────────────────────
-  // Per pattern §3, off by default and stays off for the Wishlists slice.
-  // The hook is here so future components can opt in without changing
-  // call sites. Implementation is intentionally deferred until a consumer
-  // requests it (the consumer model itself is settled at that point per
-  // pattern §7).
-  if (options.mirrorToFirestore) {
-    // Forward-compatibility hook. No-op for now.
-    // When enabled, this would append to tenants/{tenantId}/events/{autoId}
-    // with a 30-day TTL. Deliberately unimplemented for this slice.
+  // ── Firestore mirror ───────────────────────────────────────────────────
+  // Per S3-pre-code Decision #8: an always-on whitelist mirror writes the
+  // canonical PlatformEvent shape to
+  // `tenants/{tenantId}/platformEvents/{eventId}`. Core's existing
+  // `processTenantEvent` Firestore trigger picks the doc up and routes it
+  // through HANDLER_MAP (notifications/linkedEditEvent for the v0.1
+  // substantive-edit verbs).
+  //
+  // The explicit `options.mirrorToFirestore=true` opt-in path is
+  // preserved as a per-call override for non-whitelisted verbs (e.g.
+  // `reseed.completed` if a future caller wants observability without
+  // touching the whitelist).
+  //
+  // Per pattern §8.3 (notifications fan-out) — mirror failures are
+  // non-fatal to the publisher: Cloud Logging already captured the
+  // event, and the Core fan-out is observability rather than a hard
+  // requirement of the calling business logic. We surface failures via
+  // a console.error so they're visible in Cloud Logs.
+  const shouldMirror =
+    FIRESTORE_MIRROR_WHITELIST.has(input.eventType) ||
+    options.mirrorToFirestore === true;
+
+  if (shouldMirror) {
+    try {
+      await writeFirestoreMirror(envelope);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        JSON.stringify({
+          severity: 'WARNING',
+          message: 'publishEvent: Firestore mirror failed (non-fatal)',
+          eventId: envelope.eventId,
+          eventType: envelope.eventType,
+          tenantId: envelope.tenantId,
+          error: message,
+        })
+      );
+    }
   }
 }
+
+// ─── Firestore mirror ───────────────────────────────────────────────────────
+
+/**
+ * Write the canonical PlatformEvent doc to
+ * `tenants/{tenantId}/platformEvents/{eventId}`. Shape mirrors what Core's
+ * `lib/events/types.ts::PlatformEvent` expects (the same shape Core writes
+ * for its own `workitem.*` events via `lib/workItems/eventEmissions.ts`).
+ *
+ * The doc is `status: 'pending'` so Core's `processTenantEvent` trigger
+ * will pick it up and route via HANDLER_MAP. `attemptCount: 0`,
+ * `maxAttempts: 3` — Core overrides on first attempt anyway. `expiresAt`
+ * is the Firestore TTL field (60 days) per Core's existing convention.
+ */
+async function writeFirestoreMirror(
+  envelope: AngsanaEventEnvelope
+): Promise<void> {
+  const now = Timestamp.fromMillis(Date.now());
+  const expiresAt = Timestamp.fromMillis(
+    Date.now() + MIRROR_RETENTION_DAYS * MS_PER_DAY
+  );
+
+  // Shape conforms to Core's PlatformEvent (lib/events/types.ts) so the
+  // existing processEventDoc trigger in Core can process the doc without
+  // any shape adapter. Field names are exact matches.
+  const platformEvent: Record<string, unknown> = {
+    id: envelope.eventId,
+    eventType: envelope.eventType,
+    tenantId: envelope.tenantId,
+    source: envelope.source.component, // e.g. 'exchange-app'
+    surface: 'exchange',
+    service: deriveService(envelope.eventType),
+    operation: deriveOperation(envelope.eventType),
+    action: envelope.eventType,
+    resourceTypes: deriveResourceTypes(envelope.eventType),
+    env: envelope.source.environment,
+    actor: envelope.actorUid,
+    payload: envelope.payload,
+    // Scope: tenant-platform for substantive-edit linked-record events.
+    // (clientId-scoped events are valid too — the registry's `scope` field
+    // settles routing on the Core side. Tenant-platform is the safe
+    // default for these verbs.)
+    scope: 'tenant-platform',
+    category: 'processing',
+    schemaVersion: 1,
+    eventVersion: parseFloat(envelope.eventVersion) || 1,
+    sensitivity: 'moderate',
+    status: 'pending',
+    attemptCount: 0,
+    maxAttempts: 3,
+    retentionDays: MIRROR_RETENTION_DAYS,
+    expiresAt,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  if (envelope.clientId) {
+    platformEvent.clientId = envelope.clientId;
+  }
+
+  await adminDb
+    .collection('tenants')
+    .doc(envelope.tenantId)
+    .collection('platformEvents')
+    .doc(envelope.eventId)
+    .set(platformEvent);
+}
+
+/**
+ * Derive the `service` field from the eventType prefix. Convention mirrors
+ * Core's emitter conventions (lib/workItems/eventEmissions.ts uses
+ * `service: 'workItems'`). For Exchange-emitted events the prefix is the
+ * domain entity (wishlist / campaign / reseed / migration).
+ */
+function deriveService(eventType: string): string {
+  const dot = eventType.indexOf('.');
+  return dot > 0 ? eventType.slice(0, dot) : 'exchange';
+}
+
+/**
+ * Derive the `operation` field from the eventType suffix
+ * (e.g. `wishlist.added` → `'added'`).
+ */
+function deriveOperation(eventType: string): string {
+  const dot = eventType.indexOf('.');
+  return dot >= 0 ? eventType.slice(dot + 1) : eventType;
+}
+
+/**
+ * Derive the `resourceTypes` array. Mirrors the Core convention of
+ * `[domain, specific-resource]` (e.g. workItems uses
+ * `['workItem', workItemType]`). For Exchange's linked-record events
+ * the singular entity name is the canonical resource type.
+ */
+function deriveResourceTypes(eventType: string): string[] {
+  const service = deriveService(eventType);
+  return [service];
+}
+

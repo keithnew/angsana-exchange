@@ -121,6 +121,29 @@ function sameCompanyRef(a: CompanyRef | null | undefined, b: CompanyRef | null |
   );
 }
 
+/**
+ * Compare two `targetingHints` arrays for set-equality on
+ * `(type, managedListRef.itemId)`. Order-irrelevant. Used to decide
+ * whether a PUT changed the targeting hints in a way that warrants
+ * emitting `wishlist.targetingHintsChanged` per Spec §4.2.
+ *
+ * Two hints with the same `(type, listId, itemId)` are considered the
+ * same hint; `displayName` drift alone (denormalised cache) does NOT
+ * count as a substantive change.
+ */
+function sameTargetingHintSet(
+  a: TargetingHint[] | undefined,
+  b: TargetingHint[] | undefined
+): boolean {
+  const aa = a ?? [];
+  const bb = b ?? [];
+  if (aa.length !== bb.length) return false;
+  const key = (h: TargetingHint) =>
+    `${h.type}::${h.managedListRef?.listId ?? ''}::${h.managedListRef?.itemId ?? ''}`;
+  const s = new Set(aa.map(key));
+  return bb.every((h) => s.has(key(h)));
+}
+
 // ─── GET ────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest, { params }: WishlistRouteCtx) {
@@ -355,6 +378,42 @@ export async function PUT(request: NextRequest, { params }: WishlistRouteCtx) {
         wishlistId,
         from: before.companyRef ?? null,
         to: update.companyRef,
+      },
+    });
+  }
+
+  // ── §4.2 substantive-edit verbs (S3-code-P1, Decision #7) ─────────────
+  // `wishlist.targetingHintsChanged` and `wishlist.websiteChanged` are
+  // the §4.2 wishlist substantive-edit verbs that did not previously
+  // emit. They drive the linked-edit notification fan-out for any open
+  // Work Item with `subject.entityType=wishlist` and matching entityId.
+  if (
+    update.targetingHints !== undefined &&
+    !sameTargetingHintSet(
+      update.targetingHints as TargetingHint[],
+      before.targetingHints as TargetingHint[] | undefined
+    )
+  ) {
+    events.push({
+      eventType: 'wishlist.targetingHintsChanged',
+      payload: {
+        wishlistId,
+        from: before.targetingHints ?? [],
+        to: update.targetingHints,
+      },
+    });
+  }
+  if (
+    update.website !== undefined &&
+    (update.website ?? null) !==
+      ((before.website as string | null | undefined) ?? null)
+  ) {
+    events.push({
+      eventType: 'wishlist.websiteChanged',
+      payload: {
+        wishlistId,
+        from: (before.website as string | null | undefined) ?? null,
+        to: update.website ?? null,
       },
     });
   }

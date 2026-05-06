@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { publishEvent } from '@/lib/events/publish';
 
 /**
  * Helper: extract user claims from request headers (set by middleware).
@@ -25,6 +26,34 @@ function hasClientAccess(user: ReturnType<typeof getUserFromHeaders>, clientId: 
 function isInternal(role: string): boolean {
   return role === 'internal-admin' || role === 'internal-user';
 }
+
+/**
+ * Compare two arrays for set-equality (order irrelevant). Used for
+ * targeting-hint diffing to decide whether to emit
+ * `campaign.targetingHintsChanged`.
+ */
+function sameStringSet(a: unknown, b: unknown): boolean {
+  const aa = Array.isArray(a) ? (a as unknown[]).map(String) : [];
+  const bb = Array.isArray(b) ? (b as unknown[]).map(String) : [];
+  if (aa.length !== bb.length) return false;
+  const s = new Set(aa);
+  return bb.every((x) => s.has(x));
+}
+
+/**
+ * Targeting-hint fields per the v0.1 §4.2 substantive-edit definition for
+ * Campaign. The four fields collectively constitute the campaign's
+ * "targeting hints"; any change to any of them surfaces a single
+ * `campaign.targetingHintsChanged` event (one event per save, regardless
+ * of how many sub-fields moved — this matches the wishlist
+ * `targetingHintsChanged` semantic in the parallel route).
+ */
+const TARGETING_FIELDS = [
+  'targetGeographies',
+  'targetSectors',
+  'targetTitles',
+  'companySize',
+] as const;
 
 /**
  * PUT /api/clients/[clientId]/campaigns/[campaignId]
@@ -104,7 +133,70 @@ export async function PUT(
 
   await docRef.update(updateData);
 
-  return NextResponse.json({ success: true });
+  // ── Notification Pattern v0.1 §4.2 emissions ─────────────────────────
+  // Per S3-pre-code Decision #7, the v0.1 substantive-edit verb set for
+  // Campaign is `nameChanged`, `targetingHintsChanged`, `statusChanged`,
+  // and `added`. PUT covers `nameChanged` + `targetingHintsChanged`;
+  // `statusChanged` lives in POST below; `added` is in route.ts.
+  const occurredAt = new Date().toISOString();
+  const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+
+  if (
+    updateData.campaignName !== undefined &&
+    (updateData.campaignName as string) !== (currentData.campaignName as string | undefined)
+  ) {
+    events.push({
+      eventType: 'campaign.nameChanged',
+      payload: {
+        campaignId,
+        from: currentData.campaignName ?? null,
+        to: updateData.campaignName,
+      },
+    });
+  }
+
+  // Detect any change in the four targeting fields → single
+  // `campaign.targetingHintsChanged` event.
+  let targetingChanged = false;
+  for (const f of TARGETING_FIELDS) {
+    if (updateData[f] === undefined) continue;
+    if (f === 'companySize') {
+      if ((updateData[f] as string) !== (currentData[f] as string | undefined)) {
+        targetingChanged = true;
+        break;
+      }
+    } else if (!sameStringSet(updateData[f], currentData[f])) {
+      targetingChanged = true;
+      break;
+    }
+  }
+  if (targetingChanged) {
+    events.push({
+      eventType: 'campaign.targetingHintsChanged',
+      payload: {
+        campaignId,
+        targeting: {
+          targetGeographies: updateData.targetGeographies ?? currentData.targetGeographies ?? [],
+          targetSectors: updateData.targetSectors ?? currentData.targetSectors ?? [],
+          targetTitles: updateData.targetTitles ?? currentData.targetTitles ?? [],
+          companySize: updateData.companySize ?? currentData.companySize ?? '',
+        },
+      },
+    });
+  }
+
+  for (const ev of events) {
+    await publishEvent({
+      eventType: ev.eventType,
+      payload: ev.payload,
+      tenantId: user.tenantId,
+      clientId,
+      actorUid: user.uid,
+      occurredAt,
+    });
+  }
+
+  return NextResponse.json({ success: true, eventsEmitted: events.length });
 }
 
 /**
@@ -146,6 +238,25 @@ export async function POST(
   const currentStatus = currentData.status;
   const now = new Date().toISOString();
 
+  // Helper: emit `campaign.statusChanged` after a successful transition.
+  // Per Notification Pattern v0.1 §4.2, status moves are substantive
+  // edits — every legal transition surfaces a linked-edit ping.
+  async function emitStatusChange(from: string, to: string): Promise<void> {
+    await publishEvent({
+      eventType: 'campaign.statusChanged',
+      payload: {
+        campaignId,
+        from,
+        to,
+        ...(reason ? { reason: String(reason) } : {}),
+      },
+      tenantId: user.tenantId,
+      clientId,
+      actorUid: user.uid,
+      occurredAt: now,
+    });
+  }
+
   // Validate transitions
   switch (action) {
     case 'activate': {
@@ -176,6 +287,7 @@ export async function POST(
         statusHistory: FieldValue.arrayUnion(historyEntry),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      await emitStatusChange('draft', 'active');
       return NextResponse.json({ success: true, newStatus: 'active' });
     }
 
@@ -206,6 +318,7 @@ export async function POST(
         statusHistory: FieldValue.arrayUnion(historyEntry),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      await emitStatusChange('active', 'paused');
       return NextResponse.json({ success: true, newStatus: 'paused' });
     }
 
@@ -224,6 +337,7 @@ export async function POST(
         statusHistory: FieldValue.arrayUnion(historyEntry),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      await emitStatusChange('paused', 'active');
       return NextResponse.json({ success: true, newStatus: 'active' });
     }
 
@@ -241,6 +355,7 @@ export async function POST(
         statusHistory: FieldValue.arrayUnion(historyEntry),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      await emitStatusChange(currentStatus as string, 'completed');
       return NextResponse.json({ success: true, newStatus: 'completed' });
     }
 

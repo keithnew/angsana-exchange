@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { publishEvent } from '@/lib/events/publish';
 
 /**
  * Helper: extract user claims from request headers (set by middleware).
@@ -109,6 +110,24 @@ export async function POST(
     .doc(clientId)
     .collection('campaigns')
     .add(campaignData);
+
+  // Per Notification Pattern v0.1 §4.2 + S3-pre-code Decision #7: emit
+  // `campaign.added` so any open Work Item with `subject.entityType=campaign`
+  // and matching `entityId` triggers a linked-edit notification.
+  await publishEvent({
+    eventType: 'campaign.added',
+    payload: {
+      campaignId: docRef.id,
+      campaignName: campaignData.campaignName,
+      status: campaignData.status,
+      serviceType: campaignData.serviceType,
+      owner: campaignData.owner,
+    },
+    tenantId: user.tenantId,
+    clientId,
+    actorUid: user.uid,
+    occurredAt: now,
+  });
 
   return NextResponse.json({ id: docRef.id, success: true }, { status: 201 });
 }
