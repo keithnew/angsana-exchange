@@ -128,33 +128,18 @@ export async function PATCH(
       lastUpdatedAt: FieldValue.serverTimestamp(),
     });
 
-    // If client-approver saves ICP, create auto-action for AM
+    // S3-code-P4: legacy actions/ collection retired in P4 deletes;
+    // this auto-action path is banked for S6 createActionLite rewire
+    // (P3 audit-1 + P4 plan §0 audit-3 banked refinement). Replaced
+    // with a log-and-no-op — see propositions/route.ts for the
+    // identical pattern + reasoning.
     if (user.role === 'client-approver') {
-      try {
-        const now = new Date().toISOString();
-        await adminDb
-          .collection('tenants')
-          .doc(user.tenantId)
-          .collection('clients')
-          .doc(clientId)
-          .collection('actions')
-          .add({
-            title: `Client updated ICP on proposition: ${existingData.name}`,
-            description: 'Client-approver edited ICP targeting data — review for accuracy.',
-            assignedTo: '',
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'open',
-            priority: 'medium',
-            source: { type: 'manual', ref: id },
-            relatedCampaign: '',
-            createdBy: 'system',
-            createdAt: now,
-            updatedAt: now,
-          });
-      } catch (actionErr) {
-        console.warn('[propositions/icp] Auto-action creation failed:', actionErr);
-        // Non-critical — ICP save still succeeds
-      }
+      console.warn('[S3-P4] legacy auto-action skipped — banked for S6 createActionLite rewire', {
+        surface: 'propositions/[id]/icp/route.ts',
+        clientId,
+        propositionId: id,
+        proposedTitle: `Client updated ICP on proposition: ${existingData.name}`,
+      });
     }
 
     return NextResponse.json({ success: true });

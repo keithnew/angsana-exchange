@@ -18,8 +18,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG, SOWHAT_STATUS_CONFIG, SOWHAT_ORIENTATION_CONFIG } from '@/types';
-import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus, SoWhat, Proposition } from '@/types';
+import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, SOWHAT_STATUS_CONFIG, SOWHAT_ORIENTATION_CONFIG } from '@/types';
+import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, SoWhat, Proposition } from '@/types';
+import { ACTION_LITE_STATE_CONFIG, type ActionLiteState } from '@/lib/workItems/actionLite';
 import CampaignDocumentsCard from '@/components/documents/CampaignDocumentsCard';
 
 // =============================================================================
@@ -980,7 +981,10 @@ export function CampaignDetailClient({
                 </thead>
                 <tbody>
                   {relatedActions.map((action) => {
-                    const statusConfig = ACTION_STATUS_CONFIG[action.status as ActionStatus] || ACTION_STATUS_CONFIG.open;
+                    // S3-code-P4: action-lite `state` enum (open|in-progress|done|blocked)
+                    // — same shape as legacy `status`. Renderer reads from
+                    // `ACTION_LITE_STATE_CONFIG`.
+                    const statusConfig = ACTION_LITE_STATE_CONFIG[action.status as ActionLiteState] || ACTION_LITE_STATE_CONFIG.open;
                     const isOverdue = action.status !== 'done' && action.dueDate && new Date(action.dueDate) < new Date();
                     return (
                       <tr key={action.id} className="border-b border-gray-100 last:border-0">

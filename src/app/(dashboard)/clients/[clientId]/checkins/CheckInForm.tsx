@@ -7,8 +7,18 @@ import { ArrowLeft, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { CheckInType, CheckInDuration, ActionPriority } from '@/types';
-import { CHECKIN_TYPE_CONFIG, CHECKIN_DURATION_OPTIONS, ACTION_PRIORITY_CONFIG } from '@/types';
+import type { CheckInType, CheckInDuration } from '@/types';
+import { CHECKIN_TYPE_CONFIG, CHECKIN_DURATION_OPTIONS } from '@/types';
+import type { ActionLitePriority } from '@/lib/workItems/actionLite';
+import { ACTION_LITE_PRIORITY_CONFIG } from '@/lib/workItems/actionLite';
+import { AssigneePickerInput } from '@/components/workItems/AssigneePickerInput';
+
+// S3-code-P4: legacy `ActionPriority` / `ACTION_PRIORITY_CONFIG` removed
+// from `@/types`. Action surfaces now consume the action-lite Work Item
+// primitives. The form-level "priority" picker still applies to
+// action-lite (same enum: high|medium|low — Spec §7.1).
+type ActionPriority = ActionLitePriority;
+const ACTION_PRIORITY_CONFIG = ACTION_LITE_PRIORITY_CONFIG;
 
 // =============================================================================
 // Tag Input Component
@@ -210,10 +220,17 @@ function DecisionsEditor({
             </div>
             <div className="flex items-center gap-3">
               <div className="flex-1">
-                <Input
+                {/* S3-code-P4 §4: AssigneePickerInput replaces the bare
+                    Input. Free-text fallback preserved (whitespace in
+                    value → no picker opens). Audience: 'shared' — see
+                    sign-off question 4 in the P4 plan; check-in
+                    decisions/next-steps land on either internal or
+                    client side. */}
+                <AssigneePickerInput
                   value={item.assignee}
-                  onChange={(e) => updateItem(i, 'assignee', e.target.value)}
+                  onChange={(next) => updateItem(i, 'assignee', next)}
                   placeholder={assigneeLabel}
+                  audience="shared"
                   className="h-7 text-xs"
                 />
               </div>

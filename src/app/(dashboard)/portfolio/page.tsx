@@ -3,6 +3,7 @@ import { getUserContext } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import PortfolioClientComponent from './PortfolioClient';
 import { PagePadding } from '@/components/layout/PagePadding';
+import { listActionLiteForClient } from '@/lib/workItems/actionLitePersistence';
 
 /**
  * Portfolio — /portfolio
@@ -51,10 +52,13 @@ export default async function PortfolioPage() {
         .collection('clients')
         .doc(clientId);
 
-      // Parallel fetches for each client
-      const [campaignSnap, actionsSnap, checkInSnap, wishlistSnap] = await Promise.all([
+      // Parallel fetches for each client. S3-code-P4: actions now read
+      // cross-project from action-lite Work Items on `angsana-core-prod`
+      // via `listActionLiteForClient`. The campaign snapshot is fetched
+      // first (cheap, local) so we can pass campaignIds into the
+      // cross-project query for the campaign-subject branch.
+      const [campaignSnap, checkInSnap, wishlistSnap] = await Promise.all([
         clientRef.collection('campaigns').get(),
-        clientRef.collection('actions').where('status', 'in', ['open', 'in-progress']).get(),
         clientRef.collection('checkIns').orderBy('date', 'desc').limit(1).get(),
         clientRef.collection('wishlists').where('status', '==', 'new').get(),
       ]);
@@ -63,13 +67,25 @@ export default async function PortfolioPage() {
         (d) => d.data().status === 'active'
       ).length;
 
-      // Count overdue actions
-      const openActions = actionsSnap.size;
+      // S3-code-P4: action-lite read replaces legacy actions/ collection
+      // query. Filter to non-terminal-non-blocked-or-blocked
+      // (legacy `status in [open, in-progress]` ≡ action-lite
+      //  `state !== 'done' && state !== 'blocked'`).
+      const allActionsForClient = await listActionLiteForClient({
+        tenantId,
+        clientId,
+        campaignIds: campaignSnap.docs.map((d) => d.id),
+      });
+      const openActionsArray = allActionsForClient.filter(
+        (a) => a.state !== 'done' && a.state !== 'blocked'
+      );
+      const openActions = openActionsArray.length;
+
+      // Count overdue actions — action-lite carries `deadline` as an
+      // ISO string (or null); compare against now.
       let overdueActions = 0;
-      actionsSnap.docs.forEach((actionDoc) => {
-        const actionData = actionDoc.data();
-        const dueDate = actionData.dueDate?.toDate?.();
-        if (dueDate && dueDate < now) {
+      openActionsArray.forEach((a) => {
+        if (a.deadline && new Date(a.deadline) < now) {
           overdueActions++;
         }
       });

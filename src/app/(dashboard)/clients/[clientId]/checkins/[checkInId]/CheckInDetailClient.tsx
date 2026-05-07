@@ -6,8 +6,10 @@ import { useSearchParams } from 'next/navigation';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { CheckIn, Action } from '@/types';
-import { CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG } from '@/types';
+import type { CheckIn } from '@/types';
+import { CHECKIN_TYPE_CONFIG } from '@/types';
+import type { ActionLiteWire } from '@/lib/workItems/actionLite';
+import { ACTION_LITE_STATE_CONFIG } from '@/lib/workItems/actionLite';
 
 // =============================================================================
 // Helpers
@@ -38,8 +40,8 @@ function TypeBadge({ type }: { type: CheckIn['type'] }) {
   );
 }
 
-function ActionStatusBadge({ status }: { status: Action['status'] }) {
-  const config = ACTION_STATUS_CONFIG[status];
+function ActionStateBadge({ state }: { state: ActionLiteWire['state'] }) {
+  const config = ACTION_LITE_STATE_CONFIG[state];
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
@@ -63,7 +65,7 @@ export function CheckInDetailClient({
   isInternal,
 }: {
   checkin: CheckIn;
-  linkedActions: Action[];
+  linkedActions: ActionLiteWire[];
   clientId: string;
   clientName: string;
   campaignMap: Record<string, string>;
@@ -83,7 +85,7 @@ export function CheckInDetailClient({
   }, [searchParams]);
 
   // Build action lookup by title for linking decisions/next steps to actions
-  const actionsByTitle = new Map<string, Action>();
+  const actionsByTitle = new Map<string, ActionLiteWire>();
   linkedActions.forEach((a) => actionsByTitle.set(a.title, a));
 
   const isNextCheckInOverdue = checkin.nextCheckInDate && new Date(checkin.nextCheckInDate) < new Date();
@@ -186,7 +188,7 @@ export function CheckInDetailClient({
                           href={`/clients/${clientId}/actions`}
                           className="inline-flex items-center gap-1"
                         >
-                          <ActionStatusBadge status={linkedAction.status} />
+                          <ActionStateBadge state={linkedAction.state} />
                         </Link>
                       )}
                     </div>
@@ -219,7 +221,7 @@ export function CheckInDetailClient({
                           href={`/clients/${clientId}/actions`}
                           className="inline-flex items-center gap-1"
                         >
-                          <ActionStatusBadge status={linkedAction.status} />
+                          <ActionStateBadge state={linkedAction.state} />
                         </Link>
                       )}
                     </div>

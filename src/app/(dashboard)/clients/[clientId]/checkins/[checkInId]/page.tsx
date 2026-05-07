@@ -2,7 +2,9 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CheckInDetailClient } from './CheckInDetailClient';
-import type { CheckIn, Action } from '@/types';
+import type { CheckIn } from '@/types';
+import { listActionLiteForClient } from '@/lib/workItems/actionLitePersistence';
+import type { ActionLiteWire } from '@/lib/workItems/actionLite';
 import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
@@ -72,32 +74,32 @@ export default async function CheckInDetailPage({
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
   };
 
-  // Fetch linked actions
-  const linkedActions: Action[] = [];
+  // S3-code-P4: linked actions read from action-lite Work Items on
+  // angsana-core-prod (cross-project) instead of the legacy `actions/`
+  // collection. Filter by `source.ref` matching the canonical check-in
+  // path (the auto-gen path writes
+  //   source: { type: 'check-in', ref: 'tenants/.../checkIns/<id>' }
+  // ). Pre-P4 generated Work Items carry the same shape; pre-P3 docs
+  // had no source field — those were on the legacy collection and are
+  // gone post `--delete-old`.
+  let linkedActions: ActionLiteWire[] = [];
   if (checkin.generatedWorkItemIds.length > 0) {
-    // Firestore `in` query supports up to 30 items — fine for check-in actions
-    const actionsSnapshot = await clientRef
-      .collection('actions')
-      .where('source.ref', '==', checkInId)
-      .get();
-
-    for (const doc of actionsSnapshot.docs) {
-      const ad = doc.data();
-      linkedActions.push({
-        id: doc.id,
-        title: ad.title || '',
-        description: ad.description || '',
-        assignedTo: ad.assignedTo || '',
-        dueDate: ad.dueDate?.toDate?.()?.toISOString() || '',
-        status: ad.status || 'open',
-        priority: ad.priority || 'medium',
-        source: ad.source || { type: 'manual' },
-        relatedCampaign: ad.relatedCampaign || '',
-        createdBy: ad.createdBy || '',
-        createdAt: ad.createdAt?.toDate?.()?.toISOString() || '',
-        updatedAt: ad.updatedAt?.toDate?.()?.toISOString() || '',
-      });
-    }
+    // Need campaign IDs for the campaign-subject branch of the union.
+    const campaignSnap = await clientRef.collection('campaigns').get();
+    const allActions = await listActionLiteForClient({
+      tenantId,
+      clientId,
+      campaignIds: campaignSnap.docs.map((d) => d.id),
+    });
+    const expectedRef = `tenants/${tenantId}/clients/${clientId}/checkIns/${checkInId}`;
+    linkedActions = allActions.filter((a) => {
+      // Defensive: source.ref exact match OR — for forward-compat with
+      // any future shape change — workItemId membership in the check-in
+      // doc's `generatedWorkItemIds` crumb.
+      const raw = a as unknown as { source?: { ref?: string } };
+      if (raw.source?.ref === expectedRef) return true;
+      return checkin.generatedWorkItemIds.includes(a.workItemId);
+    });
   }
 
   // Fetch client name

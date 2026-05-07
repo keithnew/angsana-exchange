@@ -688,82 +688,24 @@ export const CHECKIN_DURATION_OPTIONS: { value: CheckInDuration; label: string }
 ];
 
 // =============================================================================
-// Action
+// Action — RETIRED in S3-code-P4
 // =============================================================================
-
-/**
- * Action status values.
- */
-export type ActionStatus = 'open' | 'in-progress' | 'done' | 'blocked';
-
-/**
- * Action priority values.
- */
-export type ActionPriority = 'high' | 'medium' | 'low';
-
-/**
- * Source of an action — how it was created.
- */
-export interface ActionSource {
-  type: 'checkin' | 'manual' | 'wishlist' | 'document_upload';
-  ref?: string; // checkInId, wishlistId, or documentId depending on type
-}
-
-/**
- * Action document from Firestore.
- * Stored at tenants/{tenantId}/clients/{clientId}/actions/{actionId}
- */
-export interface Action {
-  /** Document ID */
-  id: string;
-  /** Task title (max 150 chars) */
-  title: string;
-  /** Additional context (max 280 chars) */
-  description: string;
-  /** Person responsible */
-  assignedTo: string;
-  /** Due date (ISO string) */
-  dueDate: string;
-  /** Current status */
-  status: ActionStatus;
-  /** Priority level */
-  priority: ActionPriority;
-  /** Where this action came from */
-  source: ActionSource;
-  /** Optional related campaign ID */
-  relatedCampaign: string;
-  /** Who created the action */
-  createdBy: string;
-  /** When it was created (ISO string) */
-  createdAt: string;
-  /** Last updated (ISO string) */
-  updatedAt: string;
-}
-
-/**
- * Action status display configuration.
- */
-export const ACTION_STATUS_CONFIG: Record<
-  ActionStatus,
-  { label: string; colour: string; bgColour: string }
-> = {
-  open: { label: 'Open', colour: '#2563EB', bgColour: '#EFF6FF' },
-  'in-progress': { label: 'In Progress', colour: '#D97706', bgColour: '#FFFBEB' },
-  done: { label: 'Done', colour: '#059669', bgColour: '#ECFDF5' },
-  blocked: { label: 'Blocked', colour: '#DC2626', bgColour: '#FEF2F2' },
-};
-
-/**
- * Action priority display configuration.
- */
-export const ACTION_PRIORITY_CONFIG: Record<
-  ActionPriority,
-  { label: string; colour: string; bgColour: string }
-> = {
-  high: { label: 'High', colour: '#DC2626', bgColour: '#FEF2F2' },
-  medium: { label: 'Medium', colour: '#D97706', bgColour: '#FFFBEB' },
-  low: { label: 'Low', colour: '#6B7280', bgColour: '#F3F4F6' },
-};
+//
+// The legacy `Action` type + its `ActionStatus` / `ActionPriority` /
+// `ActionSource` siblings + `ACTION_STATUS_CONFIG` / `ACTION_PRIORITY_CONFIG`
+// were retired in S3-code-P4 alongside the `/api/clients/[clientId]/actions`
+// route tree. Action surfaces now consume the action-lite Work Item
+// primitives in `@/lib/workItems/actionLite`:
+//
+//   - `ActionLiteWire` (replaces `Action`)
+//   - `ActionLiteState` (replaces `ActionStatus`)
+//   - `ActionLitePriority` (replaces `ActionPriority`)
+//   - `ACTION_LITE_STATE_CONFIG` (replaces `ACTION_STATUS_CONFIG`)
+//   - `ACTION_LITE_PRIORITY_CONFIG` (replaces `ACTION_PRIORITY_CONFIG`)
+//
+// The `source` shape of action-lite Work Items follows Spec §2.1 directly
+// (Pattern: `{type, ref}`); no Exchange-side `ActionSource` interface
+// needed. See the P4 handover for the full retirement-deletes inventory.
 
 // =============================================================================
 // Wishlist

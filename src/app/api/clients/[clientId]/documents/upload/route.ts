@@ -278,39 +278,25 @@ export async function POST(
     console.log('[documents/upload] No folderMap on client config — skipping registry write (legacy client)');
   }
 
-  // ── Auto-action for client-approver uploads ─────────────────────────────
-  let autoActionId: string | null = null;
+  // ── Auto-action for client-approver uploads (S3-P4: log-and-no-op) ──────
+  //
+  // S3-code-P4: legacy actions/ collection retired in P4 deletes; this
+  // auto-action path is banked for S6 createActionLite rewire (P3
+  // audit-1 + P4 plan §0 audit-3 banked refinement). Replaced with a
+  // log-and-no-op — see propositions/route.ts for the identical pattern
+  // + reasoning.
+  // `autoActionId` retained on the response shape (typed `null`) so any
+  // existing client consumer doesn't see a missing field; once S6 lands,
+  // it'll once again carry a string id.
+  const autoActionId: string | null = null;
 
   if (isClientApprover(user.role) && registryEntry) {
-    try {
-      const actionData = {
-        title: `Review uploaded document: ${driveResult.name}`,
-        description: `${user.email} uploaded "${driveResult.name}" to ${registryEntry.folderCategory}. Please review.`,
-        assignedTo: '',
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-        status: 'open',
-        priority: 'medium',
-        source: { type: 'document_upload', ref: registryEntry.documentId },
-        relatedCampaign: campaignRef || '',
-        createdBy: user.email,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-
-      const actionRef = await adminDb
-        .collection('tenants')
-        .doc(user.tenantId)
-        .collection('clients')
-        .doc(clientId)
-        .collection('actions')
-        .add(actionData);
-
-      autoActionId = actionRef.id;
-      console.log(`[documents/upload] Auto-action created: ${actionRef.id} for client-approver upload`);
-    } catch (err) {
-      // Auto-action creation failed — not critical, log and continue
-      console.error('[documents/upload] Auto-action creation failed:', err);
-    }
+    console.warn('[S3-P4] legacy auto-action skipped — banked for S6 createActionLite rewire', {
+      surface: 'documents/upload/route.ts',
+      clientId,
+      documentId: registryEntry.documentId,
+      proposedTitle: `Review uploaded document: ${driveResult.name}`,
+    });
   }
 
   // ── Success response ────────────────────────────────────────────────────

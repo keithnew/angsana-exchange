@@ -2,7 +2,9 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CheckInEditForm } from './CheckInEditForm';
-import type { CheckIn, Action } from '@/types';
+import type { CheckIn } from '@/types';
+import { listActionLiteForClient } from '@/lib/workItems/actionLitePersistence';
+import type { ActionLiteWire } from '@/lib/workItems/actionLite';
 import { PagePadding } from '@/components/layout/PagePadding';
 
 /**
@@ -71,31 +73,27 @@ export default async function EditCheckinPage({
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
   };
 
-  // Fetch linked actions for read-only context on existing decisions
-  const linkedActions: Action[] = [];
+  // S3-code-P4: linked actions read from action-lite Work Items on
+  // angsana-core-prod (cross-project). Same shape as the read-only
+  // detail page; here used by the edit form to render existing-action
+  // status pills next to decision/next-step rows.
+  let linkedActions: ActionLiteWire[] = [];
+  // Fetch campaigns first so we can pass IDs into the cross-project
+  // listActionLiteForClient query AND reuse the snapshot below for the
+  // edit form's campaign-selector.
+  const campaignsSnapshot = await clientRef.collection('campaigns').get();
   if (checkin.generatedWorkItemIds.length > 0) {
-    const actionsSnapshot = await clientRef
-      .collection('actions')
-      .where('source.ref', '==', checkInId)
-      .get();
-
-    for (const doc of actionsSnapshot.docs) {
-      const ad = doc.data();
-      linkedActions.push({
-        id: doc.id,
-        title: ad.title || '',
-        description: ad.description || '',
-        assignedTo: ad.assignedTo || '',
-        dueDate: ad.dueDate?.toDate?.()?.toISOString() || '',
-        status: ad.status || 'open',
-        priority: ad.priority || 'medium',
-        source: ad.source || { type: 'manual' },
-        relatedCampaign: ad.relatedCampaign || '',
-        createdBy: ad.createdBy || '',
-        createdAt: ad.createdAt?.toDate?.()?.toISOString() || '',
-        updatedAt: ad.updatedAt?.toDate?.()?.toISOString() || '',
-      });
-    }
+    const allActions = await listActionLiteForClient({
+      tenantId,
+      clientId,
+      campaignIds: campaignsSnapshot.docs.map((d) => d.id),
+    });
+    const expectedRef = `tenants/${tenantId}/clients/${clientId}/checkIns/${checkInId}`;
+    linkedActions = allActions.filter((a) => {
+      const raw = a as unknown as { source?: { ref?: string } };
+      if (raw.source?.ref === expectedRef) return true;
+      return checkin.generatedWorkItemIds.includes(a.workItemId);
+    });
   }
 
   // Fetch client name
@@ -104,8 +102,6 @@ export default async function EditCheckinPage({
     ? (clientDoc.data()?.name as string) || clientId
     : clientId;
 
-  // Fetch campaigns
-  const campaignsSnapshot = await clientRef.collection('campaigns').get();
   // Include all campaigns except completed (which is terminal/historical)
   const campaigns = campaignsSnapshot.docs
     .filter((doc) => {

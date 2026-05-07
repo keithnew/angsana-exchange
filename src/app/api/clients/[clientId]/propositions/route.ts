@@ -156,33 +156,20 @@ export async function POST(
 
     const docRef = await collRef.add(propositionData);
 
-    // Auto-create action for AM when client-approver suggests a proposition
+    // S3-code-P4: legacy actions/ collection retired in P4 deletes;
+    // this auto-action path is banked for S6 createActionLite rewire
+    // (P3 audit-1 + P4 plan §0 audit-3 banked refinement). Replaced with
+    // a log-and-no-op: removes the orphan-write footgun (writes to a
+    // wiped collection would still succeed on first call but never be
+    // read by any surface) and surfaces operator visibility into the
+    // banked refinement's trigger condition.
     if (isClientApprover) {
-      try {
-        const now = new Date().toISOString();
-        await adminDb
-          .collection('tenants')
-          .doc(user.tenantId)
-          .collection('clients')
-          .doc(clientId)
-          .collection('actions')
-          .add({
-            title: `Client suggested a new proposition: ${body.name.trim()}`,
-            description: 'Client-approver created a draft proposition — review, assign category, and promote.',
-            assignedTo: '',
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'open',
-            priority: 'medium',
-            source: { type: 'manual', ref: docRef.id },
-            relatedCampaign: '',
-            createdBy: 'system',
-            createdAt: now,
-            updatedAt: now,
-          });
-      } catch (actionErr) {
-        console.warn('[propositions] Auto-action creation failed:', actionErr);
-        // Non-critical — proposition creation still succeeds
-      }
+      console.warn('[S3-P4] legacy auto-action skipped — banked for S6 createActionLite rewire', {
+        surface: 'propositions/route.ts',
+        clientId,
+        propositionId: docRef.id,
+        proposedTitle: `Client suggested a new proposition: ${body.name.trim()}`,
+      });
     }
 
     return NextResponse.json({ id: docRef.id, success: true }, { status: 201 });

@@ -7,8 +7,18 @@ import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { CheckIn, Action, CheckInType, CheckInDuration, ActionPriority } from '@/types';
-import { CHECKIN_TYPE_CONFIG, CHECKIN_DURATION_OPTIONS, ACTION_STATUS_CONFIG, ACTION_PRIORITY_CONFIG } from '@/types';
+import type { CheckIn, CheckInType, CheckInDuration } from '@/types';
+import { CHECKIN_TYPE_CONFIG, CHECKIN_DURATION_OPTIONS } from '@/types';
+import type { ActionLitePriority, ActionLiteWire } from '@/lib/workItems/actionLite';
+import { ACTION_LITE_PRIORITY_CONFIG, ACTION_LITE_STATE_CONFIG } from '@/lib/workItems/actionLite';
+import { AssigneePickerInput } from '@/components/workItems/AssigneePickerInput';
+
+// S3-code-P4: legacy `Action` / `ActionStatus` / `ActionPriority` / `ACTION_*_CONFIG`
+// types removed from `@/types`. Action surfaces now consume the
+// action-lite Work Item primitives. The form-level "priority" picker
+// still applies to action-lite (same enum: high|medium|low — Spec §7.1).
+type ActionPriority = ActionLitePriority;
+const ACTION_PRIORITY_CONFIG = ACTION_LITE_PRIORITY_CONFIG;
 
 // =============================================================================
 // Tag Input Component
@@ -155,7 +165,7 @@ function DecisionsEditor({
   label: string;
   assigneeLabel: string;
   existingCount: number;
-  linkedActions: Map<string, Action>;
+  linkedActions: Map<string, ActionLiteWire>;
 }) {
   function addItem() {
     onChange([...items, { text: '', assignee: '', dueDate: '', priority: 'medium' as ActionPriority, createAction: true }]);
@@ -186,7 +196,7 @@ function DecisionsEditor({
         {items.map((item, i) => {
           const isExisting = i < existingCount;
           const linkedAction = linkedActions.get(item.text);
-          const statusConfig = linkedAction ? ACTION_STATUS_CONFIG[linkedAction.status] : null;
+          const statusConfig = linkedAction ? ACTION_LITE_STATE_CONFIG[linkedAction.state] : null;
 
           return (
             <div key={i} className={`rounded-lg border p-3 ${isExisting ? 'border-gray-300 bg-gray-100' : 'border-gray-200 bg-gray-50'}`}>
@@ -232,10 +242,17 @@ function DecisionsEditor({
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <Input
+                      {/* S3-code-P4 §4: AssigneePickerInput replaces
+                          the bare Input. Free-text fallback preserved
+                          (whitespace in value → no picker opens).
+                          Audience: 'shared' — see sign-off question 4
+                          in the P4 plan; check-in decisions/next-steps
+                          land on either internal or client side. */}
+                      <AssigneePickerInput
                         value={item.assignee}
-                        onChange={(e) => updateItem(i, 'assignee', e.target.value)}
+                        onChange={(next) => updateItem(i, 'assignee', next)}
                         placeholder={assigneeLabel}
+                        audience="shared"
                         className="h-7 text-xs"
                       />
                     </div>
@@ -311,7 +328,7 @@ export function CheckInEditForm({
   campaigns,
 }: {
   checkin: CheckIn;
-  linkedActions: Action[];
+  linkedActions: ActionLiteWire[];
   clientId: string;
   clientName: string;
   campaigns: { id: string; campaignName: string }[];
@@ -348,7 +365,7 @@ export function CheckInEditForm({
   );
 
   // Build action lookup by title
-  const actionsByTitle = new Map<string, Action>();
+  const actionsByTitle = new Map<string, ActionLiteWire>();
   linkedActions.forEach((a) => actionsByTitle.set(a.title, a));
 
   const existingDecisionCount = checkin.decisions.length;

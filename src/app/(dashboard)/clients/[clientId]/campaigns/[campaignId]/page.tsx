@@ -3,6 +3,7 @@ import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CampaignDetailClient } from './CampaignDetailClient';
 import type { Campaign, ManagedListItem, SoWhat } from '@/types';
+import { listActionLiteForClient } from '@/lib/workItems/actionLitePersistence';
 
 /**
  * Campaign Detail Page — /clients/[clientId]/campaigns/[campaignId]
@@ -158,22 +159,31 @@ export default async function CampaignDetailPage({
     }
   }
 
-  // Fetch related actions (where relatedCampaign matches)
-  const actionsSnapshot = await clientRef
-    .collection('actions')
-    .where('relatedCampaign', '==', campaignId)
-    .get();
-
-  const relatedActions = actionsSnapshot.docs.map((doc) => {
-    const d = doc.data();
-    return {
-      id: doc.id,
-      title: d.title || '',
-      status: d.status || 'open',
-      assignedTo: d.assignedTo || '',
-      dueDate: d.dueDate?.toDate?.()?.toISOString() || '',
-    };
+  // S3-code-P4: related actions read from action-lite Work Items on
+  // angsana-core-prod (cross-project). Filter to subject.entityId
+  // matching this campaign — the action-lite Work Item shape encodes
+  // the campaign relationship via `subject` (Spec §2.1) rather than the
+  // legacy `relatedCampaign` field.
+  // Pass [campaignId] alone for `campaignIds` — the union still queries
+  // client-subject + this single campaign-subject; we filter to just
+  // this campaign post-union.
+  const allActions = await listActionLiteForClient({
+    tenantId,
+    clientId,
+    campaignIds: [campaignId],
   });
+  const relatedActions = allActions
+    .filter((a) => a.subject?.entityType === 'campaign' && a.subject?.entityId === campaignId)
+    .map((a) => ({
+      id: a.workItemId,
+      title: a.title,
+      // The CampaignDetailClient renders this via ACTION_LITE_STATE_CONFIG;
+      // the value we pass here is the action-lite `state` enum (open,
+      // in-progress, done, blocked) — same enum the legacy `status` had.
+      status: a.state,
+      assignedTo: a.owner?.userId ?? '',
+      dueDate: a.deadline ?? '',
+    }));
 
   // Fetch So Whats data for this campaign's selectedSoWhats
   let soWhatsData: SoWhat[] = [];
